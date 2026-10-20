@@ -37,6 +37,10 @@
     border: 1px solid var(--border); border-radius: 8px; padding: 5px 12px; cursor: pointer;
   }
   button:hover { background: var(--user); }
+  #modelSelect {
+    font: inherit; font-size: 13px; color: var(--text); background: var(--panel);
+    border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; max-width: 320px;
+  }
 
   main { flex: 1; overflow-y: auto; }
   #chat { max-width: 760px; margin: 0 auto; padding: 24px 16px 8px; }
@@ -93,7 +97,8 @@
 
 <header>
   <h1>Qwen Chat</h1>
-  <span class="ver" data-stamp="header">v0.4.1</span>
+  <span class="ver" data-stamp="header">v0.5.0</span>
+  <select id="modelSelect" title="Velg modell"><option>laster…</option></select>
   <span id="status">sjekker…</span>
   <span class="spacer"></span>
   <button id="aboutBtn">Om</button>
@@ -115,13 +120,13 @@
   </div>
 </div>
 
-<footer data-stamp="footer">qwen-chat v0.4.1 · kjører lokalt via Ollama</footer>
+<footer data-stamp="footer">qwen-chat v0.5.0 · kjører lokalt via Ollama</footer>
 
 <div id="docs">
   <div class="card">
     <strong>Om Qwen Chat</strong>
     <table>
-      <tr><td>Versjon</td><td data-stamp="docs">0.4.1</td></tr>
+      <tr><td>Versjon</td><td data-stamp="docs">0.5.0</td></tr>
       <tr><td>Modell</td><td id="docModel">–</td></tr>
       <tr><td>Backend</td><td>Ollama (localhost:11434)</td></tr>
       <tr><td>Vedlegg</td><td>Tekst-, kode- og PDF-filer</td></tr>
@@ -250,7 +255,7 @@ async function send() {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: messages.slice(0, -1).map((m) => ({ role: m.role, content: m.content })) }),
+      body: JSON.stringify({ model: $('modelSelect').value || undefined, messages: messages.slice(0, -1).map((m) => ({ role: m.role, content: m.content })) }),
       signal: controller.signal,
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'HTTP ' + res.status);
@@ -297,13 +302,24 @@ box.addEventListener('dragover', (e) => { e.preventDefault(); box.classList.add(
 box.addEventListener('dragleave', () => box.classList.remove('drag'));
 box.addEventListener('drop', (e) => { e.preventDefault(); box.classList.remove('drag'); addFiles(e.dataTransfer.files); });
 
+const MODEL_KEY = 'qwen-chat-model';
+const sel = $('modelSelect');
+function updateStatus() {
+  const s = $('status');
+  s.className = 'ok'; s.textContent = sel.value || '–';
+}
+sel.onchange = () => { try { localStorage.setItem(MODEL_KEY, sel.value); } catch {} updateStatus(); };
+
 fetch('/api/health').then((r) => r.json()).then((h) => {
   const s = $('status');
   $('docModel').textContent = h.model;
-  if (!h.ollama) { s.className = 'bad'; s.textContent = 'Ollama kjører ikke'; }
-  else if (!h.modelFound) { s.className = 'bad'; s.textContent = h.model + ' er ikke lastet ned'; }
-  else { s.className = 'ok'; s.textContent = h.model; }
-}).catch(() => { $('status').className = 'bad'; $('status').textContent = 'server utilgjengelig'; });
+  if (!h.ollama) { sel.innerHTML = '<option>–</option>'; s.className = 'bad'; s.textContent = 'Ollama kjører ikke'; return; }
+  const models = h.models && h.models.length ? h.models : [h.model];
+  let saved = null; try { saved = localStorage.getItem(MODEL_KEY); } catch {}
+  const chosen = models.includes(saved) ? saved : (models.includes(h.model) ? h.model : models[0]);
+  sel.innerHTML = models.map((m) => '<option' + (m === chosen ? ' selected' : '') + '>' + esc(m) + '</option>').join('');
+  updateStatus();
+}).catch(() => { sel.innerHTML = '<option>–</option>'; $('status').className = 'bad'; $('status').textContent = 'server utilgjengelig'; });
 
 render();
 $('input').focus();

@@ -83,6 +83,25 @@ async function main() {
       const norsk = /\b(jeg|deg|hjelpe|hva|kan)\b/i.test(hei) && !/\b(how|help|you)\b/i.test(hei);
       ok('svarer på norsk', norsk, 'svar: ' + hei.trim().slice(0, 60));
 
+      // Multi-modell: /api/models lister nedlastede modeller, og chat virker med eksplisitt valgt modell.
+      const models = (await (await fetch(base + '/api/models')).json()).models;
+      ok('/api/models lister modeller', Array.isArray(models) && models.length > 0, (models || []).length + ' modeller');
+      const valgtSvar = await (async () => {
+        const r = await fetch(base + '/api/chat', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: h.model, messages: [{ role: 'user', content: 'Svar kun med ordet OK.' }] }),
+        });
+        let t = '';
+        for (const line of (await r.text()).split('\n')) { if (!line.trim()) continue; const j = JSON.parse(line); if (j.message && j.message.content) t += j.message.content; }
+        return t;
+      })();
+      ok('chat med eksplisitt valgt modell', valgtSvar.trim().length > 0, 'svar: ' + valgtSvar.trim().slice(0, 40));
+      const ukjent = await fetch(base + '/api/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'finnes-ikke:xyz', messages: [{ role: 'user', content: 'hei' }] }),
+      });
+      ok('ukjent modell avvises', ukjent.status === 400, 'status ' + ukjent.status);
+
       // Hjelper: send innhold og samle hele svaret.
       const ask = async (content) => {
         const r = await fetch(base + '/api/chat', {

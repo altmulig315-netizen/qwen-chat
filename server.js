@@ -33,19 +33,33 @@ function readBody(req) {
 
 async function health() {
   try {
-    const r = await fetch(OLLAMA + '/api/tags');
-    const data = await r.json();
-    const names = (data.models || []).map((m) => m.name);
-    return { ollama: true, model: MODEL, modelFound: names.includes(MODEL), version: VERSION };
+    const names = await listModels();
+    return { ollama: true, model: MODEL, modelFound: names.includes(MODEL), models: names, version: VERSION };
   } catch {
-    return { ollama: false, model: MODEL, modelFound: false, version: VERSION };
+    return { ollama: false, model: MODEL, modelFound: false, models: [], version: VERSION };
   }
+}
+
+// Nedlastede modeller fra Ollama, sortert.
+async function listModels() {
+  const r = await fetch(OLLAMA + '/api/tags');
+  const data = await r.json();
+  return (data.models || []).map((m) => m.name).sort();
 }
 
 async function chat(req, res) {
   let body;
   try { body = JSON.parse(await readBody(req)); } catch (e) { return send(res, 400, { error: e.message }); }
   if (!Array.isArray(body.messages)) return send(res, 400, { error: 'messages mangler' });
+
+  // Valgt modell valideres mot faktisk nedlastede modeller — nettsiden kan ikke sende vilkårlige verdier til Ollama.
+  let model = MODEL;
+  if (body.model) {
+    let names = [];
+    try { names = await listModels(); } catch { return send(res, 502, { error: 'Får ikke kontakt med Ollama på ' + OLLAMA }); }
+    if (!names.includes(body.model)) return send(res, 400, { error: 'Ukjent modell: ' + body.model });
+    model = body.model;
+  }
 
   const ac = new AbortController();
   res.on('close', () => ac.abort()); // brukeren trykket Stopp / lukket fanen
@@ -55,7 +69,7 @@ async function chat(req, res) {
     upstream = await fetch(OLLAMA + '/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, messages: [{ role: 'system', content: SYSTEM }, ...body.messages], stream: true, options: { num_ctx: NUM_CTX } }),
+      body: JSON.stringify({ model, messages: [{ role: 'system', content: SYSTEM }, ...body.messages], stream: true, options: { num_ctx: NUM_CTX } }),
       signal: ac.signal,
     });
   } catch (e) {
@@ -80,6 +94,10 @@ const server = http.createServer(async (req, res) => {
     if (fs.existsSync(file)) return send(res, 200, fs.readFileSync(file, 'utf8'), 'text/javascript; charset=utf-8');
   }
   if (req.method === 'GET' && url === '/api/health') return send(res, 200, await health());
+  if (req.method === 'GET' && url === '/api/models') {
+    try { return send(res, 200, { models: await listModels(), default: MODEL }); }
+    catch { return send(res, 502, { error: 'Får ikke kontakt med Ollama' }); }
+  }
   if (req.method === 'POST' && url === '/api/chat') return chat(req, res);
   send(res, 404, { error: 'Ikke funnet' });
 });

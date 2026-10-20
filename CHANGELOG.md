@@ -3,6 +3,13 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [0.5.0] — 2026-10-20
+
+### Added
+- Multi-modell-velger: nedtrekksmeny i headeren lister nedlastede modeller, husker valget, og sender valgt modell med hver melding.
+- Nytt endepunkt `/api/models`. `/api/chat` tar imot `model` og validerer det mot nedlastede modeller (nettsiden kan ikke sende vilkårlige verdier til Ollama).
+- Bolletest `--full` sjekker `/api/models` og chat med eksplisitt valgt modell.
+
 ## [0.4.1] — 2026-10-20
 
 ### Fixed
