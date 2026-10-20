@@ -1,9 +1,32 @@
 // bolletest — apv2.2-verifisering. Kjør: node bolletest.js   (med --full: også ekte chat-svar fra modellen)
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 const { spawn } = require('child_process');
 
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
+
+// Lager et lite rødt PNG (64x64) som base64 — til vision-sjekken.
+function redPngBase64() {
+  const w = 64, h = 64;
+  const px = []; for (let i = 0; i < w; i++) px.push(255, 0, 0);
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(px)]);
+  const raw = Buffer.concat(Array.from({ length: h }, () => row));
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length, 0);
+    const td = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+    const crc = Buffer.alloc(4); crc.writeUInt32BE(zlib.crc32(td) >>> 0, 0);
+    return Buffer.concat([len, td, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8; ihdr[9] = 2; // 8-bit, truecolor RGB
+  const png = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0)),
+  ]);
+  return png.toString('base64');
+}
 const full = process.argv.includes('--full');
 let failed = 0;
 const ok = (name, cond, info = '') => {
@@ -101,6 +124,22 @@ async function main() {
         body: JSON.stringify({ model: 'finnes-ikke:xyz', messages: [{ role: 'user', content: 'hei' }] }),
       });
       ok('ukjent modell avvises', ukjent.status === 400, 'status ' + ukjent.status);
+
+      // Vision: /api/models melder vision-evne, og en vision-modell beskriver et bilde.
+      const minfo = await (await fetch(base + '/api/models')).json();
+      ok('/api/models melder vision-evne', Array.isArray(minfo.vision) && minfo.vision.length > 0, 'vision: ' + (minfo.vision || []).join(', '));
+      const vmodel = (minfo.vision || []).includes(h.model) ? h.model : (minfo.vision || [])[0];
+      if (vmodel) {
+        const r = await fetch(base + '/api/chat', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: vmodel, messages: [{ role: 'user', content: 'Hvilken farge har bildet? Svar med ett ord.', images: [redPngBase64()] }] }),
+        });
+        let vt = '';
+        for (const line of (await r.text()).split('\n')) { if (!line.trim()) continue; const j = JSON.parse(line); if (j.message && j.message.content) vt += j.message.content; }
+        ok('vision-modell beskriver bilde', /r(ø|o)d|red/i.test(vt), 'svar: ' + vt.trim().slice(0, 40));
+      } else {
+        ok('vision-modell finnes', false, 'ingen vision-modell nedlastet');
+      }
 
       // Hjelper: send innhold og samle hele svaret.
       const ask = async (content) => {

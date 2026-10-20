@@ -3,6 +3,14 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [1.7.0] — 2026-10-20
+
+### Added
+- Bildestøtte (vision): legg ved bildefiler (png/jpg/gif/webp) og still spørsmål om dem — modellen ser bildet.
+- PDF-er uten tekstlag rendres til bilder og sendes til modellen i stedet for «skannet»-feilen.
+- Modell-velgeren og statuslinja viser 👁 for modeller som kan se bilder. Vision-vakt: bilde + modell uten vision gir tydelig advarsel i stedet for stille feil.
+- `/api/models` og `/api/health` melder hvilke modeller som har vision. Bolletest `--full` sjekker at en vision-modell beskriver et bilde.
+
 ## [0.6.1] — 2026-10-20
 
 ### Fixed

@@ -34,9 +34,9 @@ function readBody(req) {
 async function health() {
   try {
     const names = await listModels();
-    return { ollama: true, model: MODEL, modelFound: names.includes(MODEL), models: names, version: VERSION };
+    return { ollama: true, model: MODEL, modelFound: names.includes(MODEL), models: names, vision: await visionModels(names), version: VERSION };
   } catch {
-    return { ollama: false, model: MODEL, modelFound: false, models: [], version: VERSION };
+    return { ollama: false, model: MODEL, modelFound: false, models: [], vision: [], version: VERSION };
   }
 }
 
@@ -45,6 +45,23 @@ async function listModels() {
   const r = await fetch(OLLAMA + '/api/tags');
   const data = await r.json();
   return (data.models || []).map((m) => m.name).sort();
+}
+
+// Vision-evne per modell, hurtigbufret (endres ikke i løpet av kjøringen).
+const visionCache = {};
+async function modelHasVision(name) {
+  if (name in visionCache) return visionCache[name];
+  try {
+    const r = await fetch(OLLAMA + '/api/show', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: name }) });
+    const d = await r.json();
+    visionCache[name] = Array.isArray(d.capabilities) && d.capabilities.includes('vision');
+  } catch { visionCache[name] = false; }
+  return visionCache[name];
+}
+async function visionModels(names) {
+  const out = [];
+  for (const n of names) if (await modelHasVision(n)) out.push(n);
+  return out;
 }
 
 async function chat(req, res) {
@@ -95,7 +112,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url === '/api/health') return send(res, 200, await health());
   if (req.method === 'GET' && url === '/api/models') {
-    try { return send(res, 200, { models: await listModels(), default: MODEL }); }
+    try { const names = await listModels(); return send(res, 200, { models: names, vision: await visionModels(names), default: MODEL }); }
     catch { return send(res, 502, { error: 'Får ikke kontakt med Ollama' }); }
   }
   if (req.method === 'POST' && url === '/api/chat') return chat(req, res);

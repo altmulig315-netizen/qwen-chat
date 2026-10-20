@@ -62,6 +62,9 @@
     border-radius: 8px; padding: 2px 8px; display: inline-flex; gap: 6px; align-items: center;
   }
   .chip b { cursor: pointer; font-weight: normal; color: var(--muted); }
+  .chip .thumb { height: 18px; border-radius: 3px; vertical-align: middle; }
+  .thumbs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .thumbs .thumb { height: 140px; max-width: 220px; border-radius: 8px; object-fit: contain; }
   .error { color: #c0392b; }
 
   #composer { max-width: 760px; width: 100%; margin: 0 auto; padding: 8px 16px 6px; }
@@ -97,7 +100,7 @@
 
 <header>
   <h1>Abliterated</h1>
-  <span class="ver" data-stamp="header">v0.6.1</span>
+  <span class="ver" data-stamp="header">v1.7.0</span>
   <select id="modelSelect" title="Velg modell"><option>laster…</option></select>
   <span id="status">sjekker…</span>
   <span class="spacer"></span>
@@ -112,7 +115,7 @@
     <div class="chips" id="pending"></div>
     <textarea id="input" rows="1" placeholder="Skriv en melding… (Enter sender, Shift+Enter ny linje)"></textarea>
     <div class="row">
-      <button id="attachBtn" title="Legg ved fil">📎 Fil</button>
+      <button id="attachBtn" title="Legg ved fil (tekst, kode, PDF, bilde)">📎 Fil</button>
       <input type="file" id="file" multiple hidden>
       <span class="spacer"></span>
       <button id="send">Send</button>
@@ -120,16 +123,16 @@
   </div>
 </div>
 
-<footer data-stamp="footer">Abliterated v0.6.1 · kjører lokalt via Ollama</footer>
+<footer data-stamp="footer">Abliterated v1.7.0 · kjører lokalt via Ollama</footer>
 
 <div id="docs">
   <div class="card">
     <strong>Om Abliterated</strong>
     <table>
-      <tr><td>Versjon</td><td data-stamp="docs">0.6.1</td></tr>
+      <tr><td>Versjon</td><td data-stamp="docs">1.7.0</td></tr>
       <tr><td>Modell</td><td id="docModel">–</td></tr>
       <tr><td>Backend</td><td>Ollama (localhost:11434)</td></tr>
-      <tr><td>Vedlegg</td><td>Tekst-, kode- og PDF-filer</td></tr>
+      <tr><td>Vedlegg</td><td>Tekst-, kode-, PDF- og bildefiler</td></tr>
     </table>
     <button id="closeDocs">Lukk</button>
   </div>
@@ -138,12 +141,19 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const KEY = 'qwen-chat';
-let messages = [];      // { role, content, text, files, thinking }
-let pending = [];       // { name, text }
+let messages = [];      // { role, content, text, files, thinking, images?, thumbs? }
+let pending = [];       // { name, text } eller { name, image(base64), thumb(dataURL) }
 let controller = null;  // AbortController for pågående svar
+let visionSet = new Set(); // modeller som kan se bilder
 
 try { messages = JSON.parse(localStorage.getItem(KEY)) || []; } catch { messages = []; }
-const save = () => { try { localStorage.setItem(KEY, JSON.stringify(messages)); } catch {} };
+// Base64-bilder lagres IKKE i historikken (for store) — bare tekst/filnavn beholdes.
+const save = () => {
+  try {
+    const lett = messages.map((m) => { const c = { ...m }; delete c.images; delete c.thumbs; return c; });
+    localStorage.setItem(KEY, JSON.stringify(lett));
+  } catch {}
+};
 
 // --- enkel markdown: kodeblokker, inline-kode, fet, avsnitt ---
 function esc(s) { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
@@ -167,9 +177,10 @@ function render() {
     const el = document.createElement('div');
     el.className = 'msg ' + m.role;
     if (m.role === 'user') {
-      if (m.files && m.files.length) {
-        el.innerHTML = '<div class="chips">' + m.files.map((f) => '<span class="chip">📄 ' + esc(f) + '</span>').join('') + '</div>';
-      }
+      let head = '';
+      if (m.files && m.files.length) head += '<div class="chips">' + m.files.map((f) => '<span class="chip">📄 ' + esc(f) + '</span>').join('') + '</div>';
+      if (m.thumbs && m.thumbs.length) head += '<div class="thumbs">' + m.thumbs.map((t) => '<img class="thumb" src="' + t + '">').join('') + '</div>';
+      el.innerHTML = head;
       el.appendChild(document.createTextNode(m.text));
     } else {
       let html = '';
@@ -184,7 +195,7 @@ function render() {
 
 function renderPending() {
   $('pending').innerHTML = pending.map((f, i) =>
-    '<span class="chip">📄 ' + esc(f.name) + ' <b data-i="' + i + '">✕</b></span>').join('');
+    '<span class="chip">' + (f.image ? '<img class="thumb" src="' + f.thumb + '"> ' : '📄 ') + esc(f.name) + ' <b data-i="' + i + '">✕</b></span>').join('');
 }
 $('pending').onclick = (e) => { if (e.target.dataset.i) { pending.splice(+e.target.dataset.i, 1); renderPending(); } };
 
@@ -212,25 +223,73 @@ async function readPdf(f) {
 
 const CTX_CHARS = 16384 * 3.5; // omtrentlig: kontekstvinduet i tegn (server bruker num_ctx 16384)
 
+// Les en bildefil som base64 (uten data:-prefiks) + dataURL til miniatyr.
+function readImage(f) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => { const url = r.result; resolve({ image: String(url).split(',')[1], thumb: String(url) }); };
+    r.onerror = reject;
+    r.readAsDataURL(f);
+  });
+}
+
+// Rendrer PDF-sider til PNG-bilder (for PDF-er uten tekstlag). Maks 5 sider.
+async function renderPdfToImages(f, maxPages = 5) {
+  const pdfjs = await loadPdfjs();
+  const buf = new Uint8Array(await f.arrayBuffer());
+  const doc = await pdfjs.getDocument({ data: buf }).promise;
+  const n = Math.min(doc.numPages, maxPages);
+  const imgs = [];
+  for (let p = 1; p <= n; p++) {
+    const page = await doc.getPage(p);
+    const viewport = page.getViewport({ scale: 1.5 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width; canvas.height = viewport.height;
+    const task = page.render({ canvasContext: canvas.getContext('2d'), viewport });
+    // Tidsgrense så UI-et aldri henger hvis canvas-tegning stopper opp i enkelte nettlesere.
+    await Promise.race([
+      task.promise,
+      new Promise((_, rej) => setTimeout(() => { try { task.cancel(); } catch {} rej(new Error('rendering tok for lang tid')); }, 20000)),
+    ]);
+    const url = canvas.toDataURL('image/png');
+    imgs.push({ name: f.name + ' (side ' + p + ')', image: url.split(',')[1], thumb: url });
+  }
+  return { imgs, total: doc.numPages, shown: n };
+}
+
 async function addFiles(list) {
   for (const f of list) {
+    const isImg = /\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name) || (f.type && f.type.startsWith('image/'));
     const isPdf = /\.pdf$/i.test(f.name) || f.type === 'application/pdf';
-    let text;
+    if (isImg) {
+      if (f.size > 15 * 1024 * 1024) { alert(f.name + ' er over 15 MB.'); continue; }
+      try { const img = await readImage(f); pending.push({ name: f.name, image: img.image, thumb: img.thumb }); }
+      catch { alert('Klarte ikke å lese bildet ' + f.name + '.'); }
+      continue;
+    }
     if (isPdf) {
       if (f.size > 20 * 1024 * 1024) { alert(f.name + ' er over 20 MB.'); continue; }
+      let text;
       try { text = await readPdf(f); } catch (e) { alert('Klarte ikke å lese ' + f.name + ': ' + e.message); continue; }
-      if (!text.replace(/--- side \d+ ---/g, '').trim()) {
-        alert(f.name + ' ser ut til å være en skannet PDF uten tekst. Tekstgjenkjenning (OCR) støttes ikke ennå.');
-        continue;
+      if (text.replace(/--- side \d+ ---/g, '').trim()) {
+        pending.push({ name: f.name, text });
+      } else {
+        // Ingen tekst → rendrer sidene til bilder slik at en vision-modell kan se dem.
+        try {
+          const { imgs, total, shown } = await renderPdfToImages(f);
+          imgs.forEach((im) => pending.push(im));
+          if (total > shown) alert(f.name + ' har ' + total + ' sider; de første ' + shown + ' ble lagt ved som bilder.');
+        } catch (e) { alert('Klarte ikke å gjøre ' + f.name + ' om til bilde (' + e.message + '). Tips: ta et skjermbilde av PDF-en og legg det ved som bildefil.'); }
       }
-    } else {
-      if (f.size > 2 * 1024 * 1024) { alert(f.name + ' er over 2 MB.'); continue; }
-      text = await f.text();
-      if (text.includes('\u0000')) { alert(f.name + ' ser ikke ut som en tekstfil. Støttede typer: tekst, kode og PDF.'); continue; }
+      continue;
     }
+    // Tekst-/kodefil
+    if (f.size > 2 * 1024 * 1024) { alert(f.name + ' er over 2 MB.'); continue; }
+    const text = await f.text();
+    if (text.includes('\u0000')) { alert(f.name + ' ser ikke ut som en støttet fil. Støttede typer: tekst, kode, PDF og bilde.'); continue; }
     pending.push({ name: f.name, text });
   }
-  const total = pending.reduce((n, f) => n + f.text.length, 0);
+  const total = pending.reduce((n, f) => n + (f.text ? f.text.length : 0), 0);
   if (total > CTX_CHARS) alert('Vedleggene er store og kan overstige modellens kontekstvindu. Noe innhold blir kanskje ikke lest.');
   renderPending();
 }
@@ -240,9 +299,18 @@ async function send() {
   const text = $('input').value.trim();
   if (!text && !pending.length) return;
 
-  const content = pending.map((f) => 'Vedlagt fil: ' + f.name + '\n```\n' + f.text + '\n```').join('\n\n')
-    + (pending.length ? '\n\n' : '') + text;
-  messages.push({ role: 'user', content, text, files: pending.map((f) => f.name) });
+  const imageAtts = pending.filter((f) => f.image);
+  // Vision-vakt: bilder krever en modell som kan se bilder.
+  if (imageAtts.length && !visionSet.has(sel.value)) {
+    alert('Modellen «' + sel.value + '» kan ikke se bilder. Bytt til en vision-modell (f.eks. qwen3.8:27b eller den abliterte) for å sende bilder.');
+    return;
+  }
+  const textAtts = pending.filter((f) => f.text);
+  const content = textAtts.map((f) => 'Vedlagt fil: ' + f.name + '\n```\n' + f.text + '\n```').join('\n\n')
+    + (textAtts.length ? '\n\n' : '') + text;
+  const images = imageAtts.map((f) => f.image);
+  const thumbs = imageAtts.map((f) => f.thumb);
+  messages.push({ role: 'user', content, text, files: pending.map((f) => f.name), images, thumbs });
   const reply = { role: 'assistant', content: '', thinking: '' };
   messages.push(reply);
   pending = []; renderPending();
@@ -255,7 +323,7 @@ async function send() {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: $('modelSelect').value || undefined, messages: messages.slice(0, -1).map((m) => ({ role: m.role, content: m.content })) }),
+      body: JSON.stringify({ model: $('modelSelect').value || undefined, messages: messages.slice(0, -1).map((m) => (m.images && m.images.length ? { role: m.role, content: m.content, images: m.images } : { role: m.role, content: m.content })) }),
       signal: controller.signal,
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'HTTP ' + res.status);
@@ -306,7 +374,7 @@ const MODEL_KEY = 'qwen-chat-model';
 const sel = $('modelSelect');
 function updateStatus() {
   const s = $('status');
-  s.className = 'ok'; s.textContent = sel.value || '–';
+  s.className = 'ok'; s.textContent = (sel.value || '–') + (visionSet.has(sel.value) ? ' 👁' : '');
 }
 sel.onchange = () => { try { localStorage.setItem(MODEL_KEY, sel.value); } catch {} updateStatus(); };
 
@@ -314,10 +382,13 @@ fetch('/api/health').then((r) => r.json()).then((h) => {
   const s = $('status');
   $('docModel').textContent = h.model;
   if (!h.ollama) { sel.innerHTML = '<option>–</option>'; s.className = 'bad'; s.textContent = 'Ollama kjører ikke'; return; }
+  visionSet = new Set(h.vision || []);
   const models = h.models && h.models.length ? h.models : [h.model];
   let saved = null; try { saved = localStorage.getItem(MODEL_KEY); } catch {}
   const chosen = models.includes(saved) ? saved : (models.includes(h.model) ? h.model : models[0]);
-  sel.innerHTML = models.map((m) => '<option' + (m === chosen ? ' selected' : '') + '>' + esc(m) + '</option>').join('');
+  sel.innerHTML = models.map((m) => '<option' + (m === chosen ? ' selected' : '') + '>' + esc(m) + (visionSet.has(m) ? ' 👁' : '') + '</option>').join('');
+  // 👁 i option-teksten ville forurenset value; sett ren value i stedet.
+  [...sel.options].forEach((o) => { o.value = o.text.replace(/ 👁$/, ''); });
   updateStatus();
 }).catch(() => { sel.innerHTML = '<option>–</option>'; $('status').className = 'bad'; $('status').textContent = 'server utilgjengelig'; });
 
