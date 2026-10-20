@@ -64,6 +64,7 @@ async function main() {
     const page = await fetch(base + '/');
     ok('server leverer siden', page.status === 200);
     ok('X-App-Version-header = ' + source, page.headers.get('x-app-version') === source, page.headers.get('x-app-version'));
+    ok('siden har no-store (ingen bufring)', (page.headers.get('cache-control') || '').includes('no-store'), page.headers.get('cache-control'));
 
     // 3. Ollama og modellen — påkrevd kun på kjøre-PC-en (markørfila .kjore-pc, synkes ikke).
     const runPc = fs.existsSync(path.join(__dirname, '.kjore-pc'));

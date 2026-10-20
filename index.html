@@ -100,7 +100,7 @@
 
 <header>
   <h1>Abliterated</h1>
-  <span class="ver" data-stamp="header">v1.7.0</span>
+  <span class="ver" data-stamp="header">v1.7.1</span>
   <select id="modelSelect" title="Velg modell"><option>laster…</option></select>
   <span id="status">sjekker…</span>
   <span class="spacer"></span>
@@ -123,16 +123,16 @@
   </div>
 </div>
 
-<footer data-stamp="footer">Abliterated v1.7.0 · kjører lokalt via Ollama</footer>
+<footer data-stamp="footer">Abliterated v1.7.1 · kjører lokalt via Ollama</footer>
 
 <div id="docs">
   <div class="card">
     <strong>Om Abliterated</strong>
     <table>
-      <tr><td>Versjon</td><td data-stamp="docs">1.7.0</td></tr>
+      <tr><td>Versjon</td><td data-stamp="docs">1.7.1</td></tr>
       <tr><td>Modell</td><td id="docModel">–</td></tr>
       <tr><td>Backend</td><td>Ollama (localhost:11434)</td></tr>
-      <tr><td>Vedlegg</td><td>Tekst-, kode-, PDF- og bildefiler</td></tr>
+      <tr><td>Vedlegg</td><td>Alt: bilde (→ vision), tekst/kode, PDF, ellers hex-oppsummering</td></tr>
     </table>
     <button id="closeDocs">Lukk</button>
   </div>
@@ -233,6 +233,53 @@ function readImage(f) {
   });
 }
 
+// Formater Ollama leser direkte. Alt annet (avif, heic …) tegnes om til PNG.
+const OLLAMA_IMG = /\.(png|jpe?g|gif|webp|bmp)$/i;
+function imageFileToPng(f) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(f);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        c.getContext('2d').drawImage(img, 0, 0);
+        const d = c.toDataURL('image/png');
+        URL.revokeObjectURL(url);
+        resolve({ image: d.split(',')[1], thumb: d });
+      } catch (e) { URL.revokeObjectURL(url); reject(e); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('kunne ikke dekode bildet')); };
+    img.src = url;
+  });
+}
+
+// Alt som verken er tekst, bilde eller PDF → en hex-/byte-oppsummering modellen kan resonnere om.
+async function fileToHexSummary(f) {
+  const buf = new Uint8Array(await f.arrayBuffer());
+  const n = Math.min(buf.length, 512);
+  const lines = [];
+  let hex = '', ascii = '';
+  for (let i = 0; i < n; i++) {
+    hex += buf[i].toString(16).padStart(2, '0') + ' ';
+    ascii += (buf[i] >= 32 && buf[i] < 127) ? String.fromCharCode(buf[i]) : '.';
+    if ((i + 1) % 16 === 0) { lines.push(hex.trim().padEnd(48) + '  ' + ascii); hex = ''; ascii = ''; }
+  }
+  if (hex) lines.push(hex.trim().padEnd(48) + '  ' + ascii);
+  const head = new TextDecoder('latin1').decode(buf.slice(0, Math.min(buf.length, 8192)));
+  const sig = [];
+  if (head.startsWith('%PDF')) sig.push('PDF');
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) sig.push('PNG');
+  if (buf[0] === 0xff && buf[1] === 0xd8) sig.push('JPEG');
+  if (head.includes('PK\x03\x04')) sig.push('ZIP');
+  if (head.startsWith('RIFF')) sig.push('RIFF (WAV/AVI)');
+  if (buf[0] === 0x7f && head.slice(1, 4) === 'ELF') sig.push('ELF (Linux-binær)');
+  if (buf[0] === 0x4d && buf[1] === 0x5a) sig.push('MZ (Windows-binær)');
+  if (head.includes('ftyp')) sig.push('ISO-media (mp4/heic/avif …)');
+  return 'Binær fil: ' + f.name + '\nStørrelse: ' + buf.length + ' byte\nGjenkjente signaturer: ' + (sig.join(', ') || 'ingen') +
+    '\n\nFørste ' + n + ' byte (hex + ascii):\n' + lines.join('\n');
+}
+
 // Rendrer PDF-sider til PNG-bilder (for PDF-er uten tekstlag). Maks 5 sider.
 async function renderPdfToImages(f, maxPages = 5) {
   const pdfjs = await loadPdfjs();
@@ -257,37 +304,41 @@ async function renderPdfToImages(f, maxPages = 5) {
   return { imgs, total: doc.numPages, shown: n };
 }
 
+// Åpent vedlegg: alt slippes inn. Bilde → vision, tekst → tekst, PDF → tekst/bilde, resten → hex-oppsummering.
 async function addFiles(list) {
   for (const f of list) {
-    const isImg = /\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name) || (f.type && f.type.startsWith('image/'));
+    const isImg = /\.(png|jpe?g|gif|webp|bmp|avif|heic|heif|tiff?)$/i.test(f.name) || (f.type && f.type.startsWith('image/'));
     const isPdf = /\.pdf$/i.test(f.name) || f.type === 'application/pdf';
-    if (isImg) {
-      if (f.size > 15 * 1024 * 1024) { alert(f.name + ' er over 15 MB.'); continue; }
-      try { const img = await readImage(f); pending.push({ name: f.name, image: img.image, thumb: img.thumb }); }
-      catch { alert('Klarte ikke å lese bildet ' + f.name + '.'); }
-      continue;
-    }
-    if (isPdf) {
-      if (f.size > 20 * 1024 * 1024) { alert(f.name + ' er over 20 MB.'); continue; }
-      let text;
-      try { text = await readPdf(f); } catch (e) { alert('Klarte ikke å lese ' + f.name + ': ' + e.message); continue; }
-      if (text.replace(/--- side \d+ ---/g, '').trim()) {
-        pending.push({ name: f.name, text });
-      } else {
-        // Ingen tekst → rendrer sidene til bilder slik at en vision-modell kan se dem.
-        try {
+    try {
+      if (isImg) {
+        if (f.size > 15 * 1024 * 1024) { alert(f.name + ' er over 15 MB.'); continue; }
+        // Format Ollama leser direkte → send rått. Ellers → tegn om til PNG.
+        const direkte = OLLAMA_IMG.test(f.name) || ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp'].includes(f.type);
+        const img = direkte ? await readImage(f) : await imageFileToPng(f);
+        pending.push({ name: f.name, image: img.image, thumb: img.thumb });
+        continue;
+      }
+      if (isPdf) {
+        if (f.size > 20 * 1024 * 1024) { alert(f.name + ' er over 20 MB.'); continue; }
+        const text = await readPdf(f);
+        if (text.replace(/--- side \d+ ---/g, '').trim()) {
+          pending.push({ name: f.name, text });
+        } else {
           const { imgs, total, shown } = await renderPdfToImages(f);
           imgs.forEach((im) => pending.push(im));
           if (total > shown) alert(f.name + ' har ' + total + ' sider; de første ' + shown + ' ble lagt ved som bilder.');
-        } catch (e) { alert('Klarte ikke å gjøre ' + f.name + ' om til bilde (' + e.message + '). Tips: ta et skjermbilde av PDF-en og legg det ved som bildefil.'); }
+        }
+        continue;
       }
-      continue;
+      // Prøv som tekst (små filer). Ellers → hex-oppsummering, så modellen fortsatt får noe å jobbe med.
+      if (f.size <= 2 * 1024 * 1024) {
+        const text = await f.text();
+        if (!text.includes('\u0000')) { pending.push({ name: f.name, text }); continue; }
+      }
+      pending.push({ name: f.name, text: await fileToHexSummary(f) });
+    } catch (e) {
+      alert('Klarte ikke å lese ' + f.name + ': ' + e.message + (isPdf ? ' Tips: ta et skjermbilde av PDF-en og legg det ved som bilde.' : ''));
     }
-    // Tekst-/kodefil
-    if (f.size > 2 * 1024 * 1024) { alert(f.name + ' er over 2 MB.'); continue; }
-    const text = await f.text();
-    if (text.includes('\u0000')) { alert(f.name + ' ser ikke ut som en støttet fil. Støttede typer: tekst, kode, PDF og bilde.'); continue; }
-    pending.push({ name: f.name, text });
   }
   const total = pending.reduce((n, f) => n + (f.text ? f.text.length : 0), 0);
   if (total > CTX_CHARS) alert('Vedleggene er store og kan overstige modellens kontekstvindu. Noe innhold blir kanskje ikke lest.');

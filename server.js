@@ -104,7 +104,8 @@ async function chat(req, res) {
 const server = http.createServer(async (req, res) => {
   const url = req.url.split('?')[0];
   if (req.method === 'GET' && (url === '/' || url === '/index.html')) {
-    return send(res, 200, fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8'), 'text/html; charset=utf-8');
+    // no-store: nettleseren skal aldri vise en gammel, bufret versjon av siden.
+    return send(res, 200, fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8'), 'text/html; charset=utf-8', { 'Cache-Control': 'no-store' });
   }
   if (req.method === 'GET' && (url === '/vendor/pdf.min.mjs' || url === '/vendor/pdf.worker.min.mjs')) {
     const file = path.join(__dirname, 'vendor', path.basename(url));

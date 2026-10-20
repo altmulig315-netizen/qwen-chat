@@ -3,6 +3,15 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [1.7.1] — 2026-10-20
+
+### Changed
+- Vedlegg er nå helt åpent: alle filer slippes inn. Bilder i alle formater (inkl. avif/heic) konverteres til PNG for vision; ukjente binærfiler blir en hex-/signatur-oppsummering modellen kan resonnere om.
+
+### Fixed
+- Siden sendes med `Cache-Control: no-store`, så nettleseren ikke viser en gammel, bufret versjon.
+- `.avif` (og flere bildeformater) ble avvist av en for streng fil-sjekk.
+
 ## [1.7.0] — 2026-10-20
 
 ### Added
