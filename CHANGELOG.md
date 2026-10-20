@@ -3,6 +3,15 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [0.2.0] — 2026-10-20
+
+### Added
+- Synk mellom kjøre-PC (ZeroTrust) og laptop via privat GitHub-repo: `sync.ps1`, `SYNC.md`, `CLAUDE.md`.
+- Pre-commit-hooken ligger nå i repoet (`hooks/pre-commit`) og aktiveres av `sync.ps1`.
+
+### Changed
+- Bolletesten krever Ollama og modell kun på kjøre-PC-en (markørfila `.kjore-pc`, synkes ikke).
+
 ## [0.1.0] — 2026-10-20
 
 ### Added

@@ -42,13 +42,18 @@ async function main() {
     ok('server leverer siden', page.status === 200);
     ok('X-App-Version-header = ' + source, page.headers.get('x-app-version') === source, page.headers.get('x-app-version'));
 
-    // 3. Ollama og modellen.
+    // 3. Ollama og modellen — påkrevd kun på kjøre-PC-en (markørfila .kjore-pc, synkes ikke).
+    const runPc = fs.existsSync(path.join(__dirname, '.kjore-pc'));
     const h = await (await fetch(base + '/api/health')).json();
-    ok('Ollama svarer', h.ollama);
-    ok('modellen ' + h.model + ' er lastet ned', h.modelFound);
+    if (runPc) {
+      ok('Ollama svarer', h.ollama);
+      ok('modellen ' + h.model + ' er lastet ned', h.modelFound);
+    } else {
+      console.log('  – Ollama-sjekker hoppet over (ikke kjøre-PC, ingen .kjore-pc)');
+    }
 
-    // 4. (--full) Ekte svar fra modellen, med et vedlegg.
-    if (full && h.modelFound) {
+    // 4. (--full, kun kjøre-PC) Ekte svar fra modellen, med et vedlegg.
+    if (full && runPc && h.modelFound) {
       const secret = 'BOLLE' + Math.floor(Math.random() * 9000 + 1000);
       const content = 'Vedlagt fil: test.txt\n```\nKodeordet er ' + secret + '.\n```\n\nHva er kodeordet i fila? Svar kun med kodeordet.';
       const r = await fetch(base + '/api/chat', {

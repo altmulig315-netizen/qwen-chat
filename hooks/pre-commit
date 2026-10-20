@@ -1,0 +1,6 @@
+#!/bin/sh
+# apv2.2 — blokkér commit hvis bolletest eller versjonssjekk feiler
+node bolletest.js || {
+  echo "apv2.2: bolletest feilet — commit blokkert."
+  exit 1
+}
