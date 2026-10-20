@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Qwen Chat</title>
+<style>
+  :root {
+    --bg: #f5f4ef; --panel: #ffffff; --text: #1f1e1d; --muted: #6b6a66;
+    --border: #e3e1d9; --user: #ebe8de; --accent: #c96442; --code: #f0eee6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #262624; --panel: #30302e; --text: #ecebe6; --muted: #9b9a95;
+      --border: #3e3e3a; --user: #3a3936; --accent: #d97757; --code: #1f1e1d;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  .ver { color: var(--muted); font-size: 12px; }
+  #status { font-size: 13px; color: var(--muted); }
+  #status.ok::before { content: "● "; color: #3a9a5b; }
+  #status.bad::before { content: "● "; color: #c0392b; }
+  .spacer { flex: 1; }
+  button {
+    font: inherit; font-size: 14px; color: var(--text); background: transparent;
+    border: 1px solid var(--border); border-radius: 8px; padding: 5px 12px; cursor: pointer;
+  }
+  button:hover { background: var(--user); }
+
+  main { flex: 1; overflow-y: auto; }
+  #chat { max-width: 760px; margin: 0 auto; padding: 24px 16px 8px; }
+  .empty { text-align: center; color: var(--muted); margin-top: 18vh; font-size: 22px; }
+  .msg { margin: 0 0 22px; overflow-wrap: anywhere; }
+  .msg.user {
+    background: var(--user); border-radius: 14px; padding: 10px 14px;
+    margin-left: auto; width: fit-content; max-width: 85%; white-space: pre-wrap;
+  }
+  .msg.assistant p { margin: 0 0 10px; }
+  .msg pre { background: var(--code); padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 14px; }
+  .msg code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 14px; }
+  .msg pre code { background: none; padding: 0; }
+  details.think { color: var(--muted); font-size: 14px; margin-bottom: 8px; }
+  details.think div { white-space: pre-wrap; border-left: 2px solid var(--border); padding-left: 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .chip {
+    font-size: 13px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 2px 8px; display: inline-flex; gap: 6px; align-items: center;
+  }
+  .chip b { cursor: pointer; font-weight: normal; color: var(--muted); }
+  .error { color: #c0392b; }
+
+  #composer { max-width: 760px; width: 100%; margin: 0 auto; padding: 8px 16px 6px; }
+  #box {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+    padding: 10px 12px; box-shadow: 0 1px 6px rgba(0,0,0,.05);
+  }
+  #box.drag { border-color: var(--accent); }
+  textarea {
+    width: 100%; border: 0; outline: 0; resize: none; background: transparent;
+    color: var(--text); font: inherit; max-height: 220px;
+  }
+  .row { display: flex; align-items: center; gap: 8px; }
+  #send { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #send:hover { filter: brightness(1.08); background: var(--accent); }
+
+  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 4px 16px 10px; }
+
+  #docs {
+    position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none;
+    align-items: center; justify-content: center; padding: 16px;
+  }
+  #docs.open { display: flex; }
+  #docs .card {
+    background: var(--panel); border-radius: 12px; padding: 20px; max-width: 420px; width: 100%;
+  }
+  #docs table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 10px 0 14px; }
+  #docs td { border-bottom: 1px solid var(--border); padding: 6px 4px; }
+  #docs td:first-child { color: var(--muted); width: 40%; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Qwen Chat</h1>
+  <span class="ver" data-stamp="header">v0.1.0</span>
+  <span id="status">sjekker…</span>
+  <span class="spacer"></span>
+  <button id="aboutBtn">Om</button>
+  <button id="newBtn">Ny samtale</button>
+</header>
+
+<main id="scroller"><div id="chat"></div></main>
+
+<div id="composer">
+  <div id="box">
+    <div class="chips" id="pending"></div>
+    <textarea id="input" rows="1" placeholder="Skriv en melding… (Enter sender, Shift+Enter ny linje)"></textarea>
+    <div class="row">
+      <button id="attachBtn" title="Legg ved fil">📎 Fil</button>
+      <input type="file" id="file" multiple hidden>
+      <span class="spacer"></span>
+      <button id="send">Send</button>
+    </div>
+  </div>
+</div>
+
+<footer data-stamp="footer">qwen-chat v0.1.0 · kjører lokalt via Ollama</footer>
+
+<div id="docs">
+  <div class="card">
+    <strong>Om Qwen Chat</strong>
+    <table>
+      <tr><td>Versjon</td><td data-stamp="docs">0.1.0</td></tr>
+      <tr><td>Modell</td><td id="docModel">–</td></tr>
+      <tr><td>Backend</td><td>Ollama (localhost:11434)</td></tr>
+      <tr><td>Vedlegg</td><td>Tekst- og kodefiler, maks 2 MB per fil</td></tr>
+    </table>
+    <button id="closeDocs">Lukk</button>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const KEY = 'qwen-chat';
+let messages = [];      // { role, content, text, files, thinking }
+let pending = [];       // { name, text }
+let controller = null;  // AbortController for pågående svar
+
+try { messages = JSON.parse(localStorage.getItem(KEY)) || []; } catch { messages = []; }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(messages)); } catch {} };
+
+// --- enkel markdown: kodeblokker, inline-kode, fet, avsnitt ---
+function esc(s) { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function md(src) {
+  const parts = src.split(/```/);
+  return parts.map((p, i) => {
+    if (i % 2) return '<pre><code>' + esc(p.replace(/^[^\n]*\n/, '')) + '</code></pre>';
+    return p.split(/\n{2,}/).filter((x) => x.trim()).map((para) =>
+      '<p>' + esc(para)
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+        .replace(/\n/g, '<br>') + '</p>').join('');
+  }).join('');
+}
+
+function render() {
+  const chat = $('chat');
+  if (!messages.length) { chat.innerHTML = '<div class="empty">Hva kan jeg hjelpe med?</div>'; return; }
+  chat.innerHTML = '';
+  for (const m of messages) {
+    const el = document.createElement('div');
+    el.className = 'msg ' + m.role;
+    if (m.role === 'user') {
+      if (m.files && m.files.length) {
+        el.innerHTML = '<div class="chips">' + m.files.map((f) => '<span class="chip">📄 ' + esc(f) + '</span>').join('') + '</div>';
+      }
+      el.appendChild(document.createTextNode(m.text));
+    } else {
+      let html = '';
+      if (m.thinking) html += '<details class="think"><summary>Tenkte</summary><div>' + esc(m.thinking) + '</div></details>';
+      html += m.error ? '<p class="error">' + esc(m.error) + '</p>' : md(m.content || '…');
+      el.innerHTML = html;
+    }
+    chat.appendChild(el);
+  }
+  $('scroller').scrollTop = $('scroller').scrollHeight;
+}
+
+function renderPending() {
+  $('pending').innerHTML = pending.map((f, i) =>
+    '<span class="chip">📄 ' + esc(f.name) + ' <b data-i="' + i + '">✕</b></span>').join('');
+}
+$('pending').onclick = (e) => { if (e.target.dataset.i) { pending.splice(+e.target.dataset.i, 1); renderPending(); } };
+
+async function addFiles(list) {
+  for (const f of list) {
+    if (f.size > 2 * 1024 * 1024) { alert(f.name + ' er over 2 MB.'); continue; }
+    const text = await f.text();
+    if (text.includes('\u0000')) { alert(f.name + ' ser ikke ut som en tekstfil. v0.1 støtter bare tekst- og kodefiler.'); continue; }
+    pending.push({ name: f.name, text });
+  }
+  renderPending();
+}
+
+async function send() {
+  if (controller) { controller.abort(); return; } // knappen er "Stopp" mens svaret strømmer
+  const text = $('input').value.trim();
+  if (!text && !pending.length) return;
+
+  const content = pending.map((f) => 'Vedlagt fil: ' + f.name + '\n```\n' + f.text + '\n```').join('\n\n')
+    + (pending.length ? '\n\n' : '') + text;
+  messages.push({ role: 'user', content, text, files: pending.map((f) => f.name) });
+  const reply = { role: 'assistant', content: '', thinking: '' };
+  messages.push(reply);
+  pending = []; renderPending();
+  $('input').value = ''; grow();
+  render();
+
+  controller = new AbortController();
+  $('send').textContent = 'Stopp';
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: messages.slice(0, -1).map((m) => ({ role: m.role, content: m.content })) }),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'HTTP ' + res.status);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n'); buf = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const j = JSON.parse(line);
+        if (j.error) throw new Error(j.error);
+        if (j.message) {
+          reply.thinking += j.message.thinking || '';
+          reply.content += j.message.content || '';
+        }
+      }
+      render();
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') reply.error = 'Feil: ' + e.message;
+  } finally {
+    controller = null;
+    $('send').textContent = 'Send';
+    save(); render();
+  }
+}
+
+function grow() { const t = $('input'); t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }
+$('input').addEventListener('input', grow);
+$('input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+$('send').onclick = send;
+$('attachBtn').onclick = () => $('file').click();
+$('file').onchange = (e) => { addFiles(e.target.files); e.target.value = ''; };
+$('newBtn').onclick = () => { if (controller) controller.abort(); messages = []; save(); render(); };
+$('aboutBtn').onclick = () => $('docs').classList.add('open');
+$('closeDocs').onclick = () => $('docs').classList.remove('open');
+
+const box = $('box');
+box.addEventListener('dragover', (e) => { e.preventDefault(); box.classList.add('drag'); });
+box.addEventListener('dragleave', () => box.classList.remove('drag'));
+box.addEventListener('drop', (e) => { e.preventDefault(); box.classList.remove('drag'); addFiles(e.dataTransfer.files); });
+
+fetch('/api/health').then((r) => r.json()).then((h) => {
+  const s = $('status');
+  $('docModel').textContent = h.model;
+  if (!h.ollama) { s.className = 'bad'; s.textContent = 'Ollama kjører ikke'; }
+  else if (!h.modelFound) { s.className = 'bad'; s.textContent = h.model + ' er ikke lastet ned'; }
+  else { s.className = 'ok'; s.textContent = h.model; }
+}).catch(() => { $('status').className = 'bad'; $('status').textContent = 'server utilgjengelig'; });
+
+render();
+$('input').focus();
+</script>
+</body>
+</html>
