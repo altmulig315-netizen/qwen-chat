@@ -68,6 +68,20 @@ async function main() {
       }
       ok('modellen svarer strømmet', chunks > 1, chunks + ' biter');
       ok('modellen leste vedlegget', text.includes(secret), 'svar: ' + text.trim().slice(0, 60));
+
+      // Norsk systeminstruks: «hei» skal gi norsk svar.
+      const r2 = await fetch(base + '/api/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [{ role: 'user', content: 'hei' }] }),
+      });
+      let hei = '';
+      for (const line of (await r2.text()).split('\n')) {
+        if (!line.trim()) continue;
+        const j = JSON.parse(line);
+        if (j.message && j.message.content) hei += j.message.content;
+      }
+      const norsk = /\b(jeg|deg|hjelpe|hva|kan)\b/i.test(hei) && !/\b(how|help|you)\b/i.test(hei);
+      ok('svarer på norsk', norsk, 'svar: ' + hei.trim().slice(0, 60));
     }
   } catch (e) {
     ok('server', false, e.message);

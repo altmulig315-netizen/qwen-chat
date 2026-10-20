@@ -9,6 +9,7 @@ const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const MODEL = process.env.MODEL || 'qwen3.8:27b';
 const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, 'version.json'), 'utf8')).version;
 const MAX_BODY = 25 * 1024 * 1024; // 25 MB (vedlegg)
+const SYSTEM = 'Du er en hjelpsom assistent. Svar alltid på norsk (bokmål), med mindre brukeren eksplisitt ber om et annet språk.';
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
   res.writeHead(status, { 'Content-Type': type, 'X-App-Version': VERSION });
@@ -53,7 +54,7 @@ async function chat(req, res) {
     upstream = await fetch(OLLAMA + '/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, messages: body.messages, stream: true }),
+      body: JSON.stringify({ model: MODEL, messages: [{ role: 'system', content: SYSTEM }, ...body.messages], stream: true }),
       signal: ac.signal,
     });
   } catch (e) {

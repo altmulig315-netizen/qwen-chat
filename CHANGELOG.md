@@ -3,6 +3,12 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [0.3.0] — 2026-10-20
+
+### Added
+- Norsk systeminstruks i `server.js`: modellen svarer alltid på norsk (bokmål) med mindre brukeren ber om noe annet.
+- Bolletest `--full` sjekker at «hei» gir norsk svar.
+
 ## [0.2.0] — 2026-10-20
 
 ### Added
