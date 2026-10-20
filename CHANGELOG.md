@@ -3,6 +3,15 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [0.6.0] — 2026-10-20
+
+### Added
+- `start.bat`: dobbeltklikk starter serveren (hvis den ikke kjører) og åpner nettsiden i nettleseren.
+- Commits får nå automatisk Claude-attribusjon via `sync.ps1`.
+
+### Changed
+- Nettsiden heter nå «Abliterated» (tittel, header, footer, Om-panel).
+
 ## [0.5.0] — 2026-10-20
 
 ### Added
