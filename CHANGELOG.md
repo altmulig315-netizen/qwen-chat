@@ -3,6 +3,14 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [0.6.1] — 2026-10-20
+
+### Fixed
+- Oppstartsloggen sier nå «Abliterated» (var fortsatt «qwen-chat» etter navnebyttet).
+
+### Changed
+- `/vendor/`-filene (pdf.js) sendes med `Cache-Control: max-age=86400`, så de ikke lastes ned på nytt ved hver sidelasting.
+
 ## [0.6.0] — 2026-10-20
 
 ### Added

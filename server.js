@@ -12,8 +12,8 @@ const MAX_BODY = 25 * 1024 * 1024; // 25 MB (vedlegg)
 const NUM_CTX = Number(process.env.NUM_CTX) || 16384; // kontekstvindu; større = lengre vedlegg, tregere
 const SYSTEM = 'Du er en hjelpsom assistent. Svar alltid på norsk (bokmål), med mindre brukeren eksplisitt ber om et annet språk.';
 
-function send(res, status, body, type = 'application/json; charset=utf-8') {
-  res.writeHead(status, { 'Content-Type': type, 'X-App-Version': VERSION });
+function send(res, status, body, type = 'application/json; charset=utf-8', extraHeaders = {}) {
+  res.writeHead(status, { 'Content-Type': type, 'X-App-Version': VERSION, ...extraHeaders });
   res.end(typeof body === 'string' ? body : JSON.stringify(body));
 }
 
@@ -91,7 +91,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && (url === '/vendor/pdf.min.mjs' || url === '/vendor/pdf.worker.min.mjs')) {
     const file = path.join(__dirname, 'vendor', path.basename(url));
-    if (fs.existsSync(file)) return send(res, 200, fs.readFileSync(file, 'utf8'), 'text/javascript; charset=utf-8');
+    if (fs.existsSync(file)) return send(res, 200, fs.readFileSync(file, 'utf8'), 'text/javascript; charset=utf-8', { 'Cache-Control': 'max-age=86400' });
   }
   if (req.method === 'GET' && url === '/api/health') return send(res, 200, await health());
   if (req.method === 'GET' && url === '/api/models') {
@@ -103,5 +103,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`qwen-chat v${VERSION} kjører på http://localhost:${PORT}  (modell: ${MODEL})`);
+  console.log(`Abliterated v${VERSION} kjører på http://localhost:${PORT}  (modell: ${MODEL})`);
 });
