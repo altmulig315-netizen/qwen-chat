@@ -93,7 +93,7 @@
 
 <header>
   <h1>Qwen Chat</h1>
-  <span class="ver" data-stamp="header">v0.3.0</span>
+  <span class="ver" data-stamp="header">v0.4.0</span>
   <span id="status">sjekker…</span>
   <span class="spacer"></span>
   <button id="aboutBtn">Om</button>
@@ -115,16 +115,16 @@
   </div>
 </div>
 
-<footer data-stamp="footer">qwen-chat v0.3.0 · kjører lokalt via Ollama</footer>
+<footer data-stamp="footer">qwen-chat v0.4.0 · kjører lokalt via Ollama</footer>
 
 <div id="docs">
   <div class="card">
     <strong>Om Qwen Chat</strong>
     <table>
-      <tr><td>Versjon</td><td data-stamp="docs">0.3.0</td></tr>
+      <tr><td>Versjon</td><td data-stamp="docs">0.4.0</td></tr>
       <tr><td>Modell</td><td id="docModel">–</td></tr>
       <tr><td>Backend</td><td>Ollama (localhost:11434)</td></tr>
-      <tr><td>Vedlegg</td><td>Tekst- og kodefiler, maks 2 MB per fil</td></tr>
+      <tr><td>Vedlegg</td><td>Tekst-, kode- og PDF-filer</td></tr>
     </table>
     <button id="closeDocs">Lukk</button>
   </div>
@@ -183,13 +183,50 @@ function renderPending() {
 }
 $('pending').onclick = (e) => { if (e.target.dataset.i) { pending.splice(+e.target.dataset.i, 1); renderPending(); } };
 
+let pdfjsLib = null;
+async function loadPdfjs() {
+  if (!pdfjsLib) {
+    pdfjsLib = await import('/vendor/pdf.min.mjs');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.mjs';
+  }
+  return pdfjsLib;
+}
+
+async function readPdf(f) {
+  const pdfjs = await loadPdfjs();
+  const buf = new Uint8Array(await f.arrayBuffer());
+  const doc = await pdfjs.getDocument({ data: buf }).promise;
+  let out = '';
+  for (let p = 1; p <= doc.numPages; p++) {
+    const page = await doc.getPage(p);
+    const content = await page.getTextContent();
+    out += '--- side ' + p + ' ---\n' + content.items.map((i) => i.str).join(' ') + '\n';
+  }
+  return out;
+}
+
+const CTX_CHARS = 16384 * 3.5; // omtrentlig: kontekstvinduet i tegn (server bruker num_ctx 16384)
+
 async function addFiles(list) {
   for (const f of list) {
-    if (f.size > 2 * 1024 * 1024) { alert(f.name + ' er over 2 MB.'); continue; }
-    const text = await f.text();
-    if (text.includes('\u0000')) { alert(f.name + ' ser ikke ut som en tekstfil. v0.1 støtter bare tekst- og kodefiler.'); continue; }
+    const isPdf = /\.pdf$/i.test(f.name) || f.type === 'application/pdf';
+    let text;
+    if (isPdf) {
+      if (f.size > 20 * 1024 * 1024) { alert(f.name + ' er over 20 MB.'); continue; }
+      try { text = await readPdf(f); } catch (e) { alert('Klarte ikke å lese ' + f.name + ': ' + e.message); continue; }
+      if (!text.replace(/--- side \d+ ---/g, '').trim()) {
+        alert(f.name + ' ser ut til å være en skannet PDF uten tekst. Tekstgjenkjenning (OCR) støttes ikke ennå.');
+        continue;
+      }
+    } else {
+      if (f.size > 2 * 1024 * 1024) { alert(f.name + ' er over 2 MB.'); continue; }
+      text = await f.text();
+      if (text.includes('\u0000')) { alert(f.name + ' ser ikke ut som en tekstfil. Støttede typer: tekst, kode og PDF.'); continue; }
+    }
     pending.push({ name: f.name, text });
   }
+  const total = pending.reduce((n, f) => n + f.text.length, 0);
+  if (total > CTX_CHARS) alert('Vedleggene er store og kan overstige modellens kontekstvindu. Noe innhold blir kanskje ikke lest.');
   renderPending();
 }
 

@@ -82,6 +82,33 @@ async function main() {
       }
       const norsk = /\b(jeg|deg|hjelpe|hva|kan)\b/i.test(hei) && !/\b(how|help|you)\b/i.test(hei);
       ok('svarer på norsk', norsk, 'svar: ' + hei.trim().slice(0, 60));
+
+      // Hjelper: send innhold og samle hele svaret.
+      const ask = async (content) => {
+        const r = await fetch(base + '/api/chat', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: [{ role: 'user', content }] }),
+        });
+        let t = '';
+        for (const line of (await r.text()).split('\n')) {
+          if (!line.trim()) continue;
+          const j = JSON.parse(line);
+          if (j.message && j.message.content) t += j.message.content;
+        }
+        return t;
+      };
+
+      // PDF-vedlegg: trekk ut test/test.pdf med samme pdf.js som nettsiden, modellen må finne kodeordet.
+      const { extractPdf } = await import('./test/pdf-node.mjs');
+      const pdfText = await extractPdf(path.join(__dirname, 'test', 'test.pdf'));
+      const pdfSvar = await ask('Vedlagt fil: test.pdf\n```\n' + pdfText + '\n```\n\nHva er kodeordet i PDF-en? Svar kun med kodeordet.');
+      ok('modellen leste PDF-vedlegget', pdfSvar.includes('PDFBOLLE4231'), 'svar: ' + pdfSvar.trim().slice(0, 60));
+
+      // Langt vedlegg (~6000 tokens): kodeordet står helt først. Beviser at konteksten ikke kuttes ved 4096.
+      const langSecret = 'LANGBOLLE' + Math.floor(Math.random() * 9000 + 1000);
+      const fyll = ('Dette er en lang testtekst som fyller opp kontekstvinduet. ').repeat(600);
+      const langSvar = await ask('Vedlagt fil: lang.txt\n```\nKodeordet er ' + langSecret + '.\n\n' + fyll + '\n```\n\nHva er kodeordet som står helt først i fila? Svar kun med kodeordet.');
+      ok('leser langt vedlegg (num_ctx > 4096)', langSvar.includes(langSecret), 'svar: ' + langSvar.trim().slice(0, 60));
     }
   } catch (e) {
     ok('server', false, e.message);

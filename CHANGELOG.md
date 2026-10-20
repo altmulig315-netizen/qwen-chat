@@ -3,6 +3,16 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [0.4.0] — 2026-10-20
+
+### Added
+- PDF-vedlegg: PDF-er leses i nettleseren med vendret pdf.js (`vendor/`), side for side, maks 20 MB. Skannet PDF uten tekst gir en tydelig melding.
+- Advarsel i nettsiden når vedleggene kan overstige kontekstvinduet.
+- Bolletest `--full` sjekker PDF-kodeord og et langt vedlegg (num_ctx > 4096).
+
+### Fixed
+- Kontekstvinduet var 4096 tokens som standard, så lengre vedlegg ble kuttet. `server.js` setter nå `num_ctx` 16384 (kan overstyres med `NUM_CTX`).
+
 ## [0.3.0] — 2026-10-20
 
 ### Added

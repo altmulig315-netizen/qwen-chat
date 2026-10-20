@@ -9,6 +9,7 @@ const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const MODEL = process.env.MODEL || 'qwen3.8:27b';
 const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, 'version.json'), 'utf8')).version;
 const MAX_BODY = 25 * 1024 * 1024; // 25 MB (vedlegg)
+const NUM_CTX = Number(process.env.NUM_CTX) || 16384; // kontekstvindu; større = lengre vedlegg, tregere
 const SYSTEM = 'Du er en hjelpsom assistent. Svar alltid på norsk (bokmål), med mindre brukeren eksplisitt ber om et annet språk.';
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
@@ -54,7 +55,7 @@ async function chat(req, res) {
     upstream = await fetch(OLLAMA + '/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, messages: [{ role: 'system', content: SYSTEM }, ...body.messages], stream: true }),
+      body: JSON.stringify({ model: MODEL, messages: [{ role: 'system', content: SYSTEM }, ...body.messages], stream: true, options: { num_ctx: NUM_CTX } }),
       signal: ac.signal,
     });
   } catch (e) {
@@ -73,6 +74,10 @@ const server = http.createServer(async (req, res) => {
   const url = req.url.split('?')[0];
   if (req.method === 'GET' && (url === '/' || url === '/index.html')) {
     return send(res, 200, fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8'), 'text/html; charset=utf-8');
+  }
+  if (req.method === 'GET' && (url === '/vendor/pdf.min.mjs' || url === '/vendor/pdf.worker.min.mjs')) {
+    const file = path.join(__dirname, 'vendor', path.basename(url));
+    if (fs.existsSync(file)) return send(res, 200, fs.readFileSync(file, 'utf8'), 'text/javascript; charset=utf-8');
   }
   if (req.method === 'GET' && url === '/api/health') return send(res, 200, await health());
   if (req.method === 'POST' && url === '/api/chat') return chat(req, res);
