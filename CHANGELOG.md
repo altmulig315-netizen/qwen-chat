@@ -3,6 +3,11 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [0.4.1] — 2026-10-20
+
+### Fixed
+- `.gitattributes` merker `*.pdf` som binær, så test-PDF-en ikke korrumperes av linjeskift-konvertering ved utsjekk på en annen maskin.
+
 ## [0.4.0] — 2026-10-20
 
 ### Added

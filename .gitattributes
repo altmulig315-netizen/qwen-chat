@@ -1,0 +1,5 @@
+# Binære filer skal aldri få linjeskift-konvertering.
+*.pdf binary
+
+# Hold pdf.js-filene konsistente på tvers av maskinene.
+*.mjs text eol=lf
