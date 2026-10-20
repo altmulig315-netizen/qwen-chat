@@ -3,6 +3,14 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [1.7.2] — 2026-10-21
+
+### Added
+- Animert «tenker»-indikator (pulserende prikker) mens modellen genererer svar.
+
+### Changed
+- `start.bat`/`start.ps1` starter nå også Ollama hvis den er nede — ett dobbeltklikk får opp alt (Ollama + server + nettside).
+
 ## [1.7.1] — 2026-10-20
 
 ### Changed
