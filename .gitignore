@@ -3,3 +3,5 @@
 
 # opplastede filer til agent-analyse (lokale, skal ikke synkes)
 uploads/
+# agentens midlertidige python-skript
+runs/

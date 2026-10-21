@@ -3,6 +3,13 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [1.9.0] — 2026-10-21
+
+### Added
+- `kjør_python`-verktøy: agenten kan skrive og kjøre egen Python-kode (numpy/scipy) når de ferdige verktøyene ikke strekker til — f.eks. en egen FSK/LSB-dekoder.
+- Bekreft-før-kjør-port: hver kjøring vises som et kort i nettsiden med koden (redigerbar) og «Kjør»/«Avvis». Ingenting kjøres uten din godkjenning. Serveren pauser løkka (`/api/agent/resume`) til du svarer.
+- Koden kjøres isolert (`python -I`, eget skript-katalog `runs/`, cwd = `uploads/`) så en opplastet fil ikke kan kapre import.
+
 ## [1.8.0] — 2026-10-21
 
 ### Added

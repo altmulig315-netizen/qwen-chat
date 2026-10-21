@@ -162,6 +162,13 @@ async function main() {
       }
       ok('agent kaller verktøy (verktøy-løkke)', toolCalled, agentErr ? 'feil: ' + agentErr.slice(0, 50) : 'modell: ' + amodel);
 
+      // Godkjennings-port: /api/agent/resume avviser ukjent id (ruten finnes).
+      const rz = await fetch(base + '/api/agent/resume', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'finnes-ikke', approved: true, code: 'print(1)' }),
+      });
+      ok('agent/resume avviser ukjent id', rz.status === 400, 'status ' + rz.status);
+
       // Hjelper: send innhold og samle hele svaret.
       const ask = async (content) => {
         const r = await fetch(base + '/api/chat', {
