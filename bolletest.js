@@ -142,6 +142,26 @@ async function main() {
         ok('vision-modell finnes', false, 'ingen vision-modell nedlastet');
       }
 
+      // Agent: last opp en fil og sjekk at agenten gjør minst ett verktøy-kall (verktøy-løkka virker).
+      const up = await fetch(base + '/api/upload', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: 'test.pdf', data: fs.readFileSync(path.join(__dirname, 'test', 'test.pdf')).toString('base64') }),
+      });
+      ok('/api/upload lagrer fil', (await up.json()).ok === true);
+      const amodel = minfo.agentDefault && (minfo.models || []).includes(minfo.agentDefault) ? minfo.agentDefault : (minfo.models || [])[0];
+      const ar = await fetch(base + '/api/agent', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: amodel, messages: [{ role: 'user', content: 'Analyser test.pdf og si hva slags fil det er.' }] }),
+      });
+      let toolCalled = false, agentErr = '';
+      for (const line of (await ar.text()).split('\n')) {
+        if (!line.trim()) continue;
+        const e = JSON.parse(line);
+        if (e.type === 'tool_call') toolCalled = true;
+        if (e.error) agentErr = e.error;
+      }
+      ok('agent kaller verktøy (verktøy-løkke)', toolCalled, agentErr ? 'feil: ' + agentErr.slice(0, 50) : 'modell: ' + amodel);
+
       // Hjelper: send innhold og samle hele svaret.
       const ask = async (content) => {
         const r = await fetch(base + '/api/chat', {

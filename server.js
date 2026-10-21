@@ -3,14 +3,28 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { execFile } = require('child_process');
 
 const PORT = Number(process.env.PORT) || 3000;
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const MODEL = process.env.MODEL || 'qwen3.8:27b';
+const AGENT_MODEL = process.env.AGENT_MODEL || 'devstral:24b-small-2505-q4_K_M'; // mest pålitelige verktøy-kaller
 const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, 'version.json'), 'utf8')).version;
-const MAX_BODY = 25 * 1024 * 1024; // 25 MB (vedlegg)
+const MAX_BODY = 60 * 1024 * 1024; // 60 MB (opplasting av filer til analyse)
 const NUM_CTX = Number(process.env.NUM_CTX) || 16384; // kontekstvindu; større = lengre vedlegg, tregere
 const SYSTEM = 'Du er en hjelpsom assistent. Svar alltid på norsk (bokmål), med mindre brukeren eksplisitt ber om et annet språk.';
+const AGENT_SYSTEM = [
+  'Du er en CTF- og filanalyse-agent. Jobben din er å finne det skjulte flagget ved å følge sporene helt til mål.',
+  'Regler:',
+  '- Kall ETT verktøy om gangen, les resultatet, og FORTSETT til neste steg. Ikke gi opp etter ett steg.',
+  '- Korte treff som X{ab} er binær-støy, IKKE ekte flagg. Et ekte flagg har meningsfylt innhold.',
+  '- Når analyser_fil pakker ut filer: analyser dem videre. Lydfil (WAV) → kall dekod_lyd. Lagde den et SSTV-bilde → kall spør_vision på det bildet for å lese teksten. Bildefil → kall spør_vision.',
+  '- Følg "notes" i verktøy-svarene — de sier hva neste steg bør være.',
+  '- Oppsummer og oppgi flagget FØRST når du faktisk har lest det (f.eks. via spør_vision), ikke før.',
+  'Svar på norsk.',
+].join('\n');
+const UPLOAD_DIR = path.join(__dirname, 'uploads');
+const PY = process.env.PYTHON || 'python';
 
 function send(res, status, body, type = 'application/json; charset=utf-8', extraHeaders = {}) {
   res.writeHead(status, { 'Content-Type': type, 'X-App-Version': VERSION, ...extraHeaders });
@@ -34,9 +48,9 @@ function readBody(req) {
 async function health() {
   try {
     const names = await listModels();
-    return { ollama: true, model: MODEL, modelFound: names.includes(MODEL), models: names, vision: await visionModels(names), version: VERSION };
+    return { ollama: true, model: MODEL, modelFound: names.includes(MODEL), models: names, vision: await visionModels(names), agentDefault: AGENT_MODEL, version: VERSION };
   } catch {
-    return { ollama: false, model: MODEL, modelFound: false, models: [], vision: [], version: VERSION };
+    return { ollama: false, model: MODEL, modelFound: false, models: [], vision: [], agentDefault: AGENT_MODEL, version: VERSION };
   }
 }
 
@@ -101,6 +115,101 @@ async function chat(req, res) {
   res.end();
 }
 
+// ---- Agent: opplasting, verktøy og løkke ----
+function ensureUpload() { if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true }); }
+const safeName = (n) => path.basename(String(n || '')).replace(/[^A-Za-z0-9._-]/g, '_');
+
+// Kjør et av VÅRE python-skript (ikke brukerens fil) med -I, filsti som argument.
+function runPy(script, args) {
+  return new Promise((resolve) => {
+    execFile(PY, ['-I', path.join(__dirname, 'tools', script), ...args], { maxBuffer: 20 * 1024 * 1024, timeout: 120000 },
+      (err, stdout, stderr) => resolve(err ? JSON.stringify({ error: (stderr || err.message).slice(0, 500) }) : stdout.trim()));
+  });
+}
+
+// Verktøy-definisjoner som sendes til modellen.
+const TOOLS = [
+  { type: 'function', function: { name: 'list_vedlegg', description: 'List opplastede filer som kan analyseres', parameters: { type: 'object', properties: {} } } },
+  { type: 'function', function: { name: 'analyser_fil', description: 'Analyser en fil: finn signaturer, pakk ut innebygde lag (zip/bilder), søk etter flagg. Utpakkede filer blir nye vedlegg.', parameters: { type: 'object', properties: { filename: { type: 'string' } }, required: ['filename'] } } },
+  { type: 'function', function: { name: 'dekod_lyd', description: 'Dekod en lydfil (WAV): prøv SSTV (lager bilde) og FSK. Bruk spør_vision på SSTV-bildet etterpå.', parameters: { type: 'object', properties: { filename: { type: 'string' } }, required: ['filename'] } } },
+  { type: 'function', function: { name: 'les_vedlegg', description: 'Les tekstinnholdet i en opplastet fil', parameters: { type: 'object', properties: { filename: { type: 'string' } }, required: ['filename'] } } },
+  { type: 'function', function: { name: 'spor_vision', description: 'La en vision-modell se på et bilde og svare på et spørsmål (f.eks. lese tekst/flagg)', parameters: { type: 'object', properties: { filename: { type: 'string' }, question: { type: 'string' } }, required: ['filename', 'question'] } } },
+];
+
+async function askVision(file, question) {
+  const names = await listModels();
+  const vis = (await visionModels(names));
+  const vm = vis.includes(MODEL) ? MODEL : vis[0];
+  if (!vm) return 'Ingen vision-modell tilgjengelig.';
+  const b64 = fs.readFileSync(file).toString('base64');
+  const r = await fetch(OLLAMA + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: vm, stream: false, messages: [{ role: 'user', content: question, images: [b64] }] }) });
+  const d = await r.json();
+  return (d.message && d.message.content) || 'Vision-modellen ga ikke noe svar.';
+}
+
+async function executeTool(name, args) {
+  try {
+    if (name === 'list_vedlegg') { ensureUpload(); return JSON.stringify({ files: fs.readdirSync(UPLOAD_DIR) }); }
+    const file = path.join(UPLOAD_DIR, safeName(args.filename));
+    if (['analyser_fil', 'dekod_lyd', 'les_vedlegg', 'spor_vision'].includes(name) && !fs.existsSync(file))
+      return JSON.stringify({ error: 'Finner ikke fila ' + args.filename });
+    if (name === 'analyser_fil') return await runPy('analyze.py', [file, UPLOAD_DIR]);
+    if (name === 'dekod_lyd') return await runPy('audio.py', [file, UPLOAD_DIR]);
+    if (name === 'les_vedlegg') return fs.readFileSync(file, 'utf8').slice(0, 20000);
+    if (name === 'spor_vision') return await askVision(file, String(args.question || 'Hva ser du? Les eventuell tekst.'));
+    return JSON.stringify({ error: 'Ukjent verktøy ' + name });
+  } catch (e) { return JSON.stringify({ error: String(e.message || e) }); }
+}
+
+async function agent(req, res) {
+  let body;
+  try { body = JSON.parse(await readBody(req)); } catch (e) { return send(res, 400, { error: e.message }); }
+  if (!Array.isArray(body.messages)) return send(res, 400, { error: 'messages mangler' });
+  let model = AGENT_MODEL;
+  const names = await listModels().catch(() => []);
+  if (body.model && names.includes(body.model)) model = body.model;
+  else if (!names.includes(model) && names[0]) model = names[0];
+
+  res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'X-App-Version': VERSION });
+  const emit = (o) => res.write(JSON.stringify(o) + '\n');
+  const messages = [{ role: 'system', content: AGENT_SYSTEM }, ...body.messages];
+  try {
+    for (let step = 0; step < 12; step++) {
+      const r = await fetch(OLLAMA + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages, tools: TOOLS, stream: false, options: { num_ctx: NUM_CTX } }) });
+      if (!r.ok) { emit({ error: await r.text() }); break; }
+      const d = await r.json();
+      const msg = d.message || {};
+      if (msg.content) emit({ type: 'assistant', content: msg.content });
+      const calls = msg.tool_calls || [];
+      if (!calls.length) { emit({ type: 'done' }); break; }
+      messages.push(msg);
+      for (const c of calls) {
+        const fn = c.function.name;
+        let a = c.function.arguments; if (typeof a === 'string') { try { a = JSON.parse(a); } catch { a = {}; } }
+        emit({ type: 'tool_call', name: fn, args: a });
+        const result = await executeTool(fn, a || {});
+        emit({ type: 'tool_result', name: fn, result: String(result).slice(0, 2000) });
+        messages.push({ role: 'tool', content: String(result) });
+      }
+      if (step === 11) emit({ type: 'assistant', content: '(nådde maks antall verktøy-steg)' });
+    }
+  } catch (e) { emit({ error: String(e.message || e) }); }
+  res.end();
+}
+
+async function upload(req, res) {
+  let body;
+  try { body = JSON.parse(await readBody(req)); } catch (e) { return send(res, 400, { error: e.message }); }
+  if (!body.filename || !body.data) return send(res, 400, { error: 'filename og data (base64) kreves' });
+  ensureUpload();
+  const name = safeName(body.filename);
+  try { fs.writeFileSync(path.join(UPLOAD_DIR, name), Buffer.from(body.data, 'base64')); }
+  catch (e) { return send(res, 500, { error: String(e.message) }); }
+  return send(res, 200, { ok: true, filename: name });
+}
+
 const server = http.createServer(async (req, res) => {
   const url = req.url.split('?')[0];
   if (req.method === 'GET' && (url === '/' || url === '/index.html')) {
@@ -113,10 +222,12 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url === '/api/health') return send(res, 200, await health());
   if (req.method === 'GET' && url === '/api/models') {
-    try { const names = await listModels(); return send(res, 200, { models: names, vision: await visionModels(names), default: MODEL }); }
+    try { const names = await listModels(); return send(res, 200, { models: names, vision: await visionModels(names), default: MODEL, agentDefault: AGENT_MODEL }); }
     catch { return send(res, 502, { error: 'Får ikke kontakt med Ollama' }); }
   }
   if (req.method === 'POST' && url === '/api/chat') return chat(req, res);
+  if (req.method === 'POST' && url === '/api/upload') return upload(req, res);
+  if (req.method === 'POST' && url === '/api/agent') return agent(req, res);
   send(res, 404, { error: 'Ikke funnet' });
 });
 

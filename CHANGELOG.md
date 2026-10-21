@@ -3,6 +3,14 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [1.8.0] — 2026-10-21
+
+### Added
+- Agent-modus (🔧): modellen bruker verktøy i en løkke og viser hvert steg. Verktøy: `analyser_fil` (polyglot/stego-carver), `dekod_lyd` (SSTV/FSK), `les_vedlegg`, `list_vedlegg`, `spør_vision` (deleger bilde til en vision-modell).
+- Én agent som delegerer, i stedet for separate vinduer per modell — fungerer for alle modeller med «tools»-evne.
+- Standard agent-modell er Devstral (mest pålitelige verktøy-kaller i vår test: 10/10 mot 8/10 for Qwen3-Coder).
+- `/api/upload` og `/api/agent` på serveren; opplastede filer ligger i `uploads/` (ikke synket).
+
 ## [1.7.2] — 2026-10-21
 
 ### Added

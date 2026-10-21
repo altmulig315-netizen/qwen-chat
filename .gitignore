@@ -1,2 +1,5 @@
 # markør for maskinen som kjører server + modell — skal aldri synkes
 .kjore-pc
+
+# opplastede filer til agent-analyse (lokale, skal ikke synkes)
+uploads/

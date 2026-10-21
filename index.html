@@ -41,6 +41,11 @@
     font: inherit; font-size: 13px; color: var(--text); background: var(--panel);
     border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; max-width: 320px;
   }
+  #agentLbl { font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+  .tool { font-size: 14px; margin: 4px 0; }
+  .tool .call { color: var(--accent); font-family: ui-monospace, monospace; }
+  .tool details { color: var(--muted); }
+  .tool details pre { background: var(--code); padding: 8px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; font-size: 13px; }
 
   main { flex: 1; overflow-y: auto; }
   #chat { max-width: 760px; margin: 0 auto; padding: 24px 16px 8px; }
@@ -105,8 +110,9 @@
 
 <header>
   <h1>Abliterated</h1>
-  <span class="ver" data-stamp="header">v1.7.2</span>
+  <span class="ver" data-stamp="header">v1.8.0</span>
   <select id="modelSelect" title="Velg modell"><option>laster…</option></select>
+  <label id="agentLbl" title="Agent-modus: modellen bruker verktøy (filanalyse, lyd, vision) i en løkke"><input type="checkbox" id="agentToggle"> 🔧 Agent</label>
   <span id="status">sjekker…</span>
   <span class="spacer"></span>
   <button id="aboutBtn">Om</button>
@@ -128,16 +134,17 @@
   </div>
 </div>
 
-<footer data-stamp="footer">Abliterated v1.7.2 · kjører lokalt via Ollama</footer>
+<footer data-stamp="footer">Abliterated v1.8.0 · kjører lokalt via Ollama</footer>
 
 <div id="docs">
   <div class="card">
     <strong>Om Abliterated</strong>
     <table>
-      <tr><td>Versjon</td><td data-stamp="docs">1.7.2</td></tr>
+      <tr><td>Versjon</td><td data-stamp="docs">1.8.0</td></tr>
       <tr><td>Modell</td><td id="docModel">–</td></tr>
       <tr><td>Backend</td><td>Ollama (localhost:11434)</td></tr>
       <tr><td>Vedlegg</td><td>Alt: bilde (→ vision), tekst/kode, PDF, ellers hex-oppsummering</td></tr>
+      <tr><td>Agent 🔧</td><td>Modellen bruker verktøy i en løkke: analyser_fil, dekod_lyd, spør_vision. Standard: Devstral</td></tr>
     </table>
     <button id="closeDocs">Lukk</button>
   </div>
@@ -187,6 +194,16 @@ function render() {
       if (m.thumbs && m.thumbs.length) head += '<div class="thumbs">' + m.thumbs.map((t) => '<img class="thumb" src="' + t + '">').join('') + '</div>';
       el.innerHTML = head;
       el.appendChild(document.createTextNode(m.text));
+    } else if (m.agent) {
+      let html = '';
+      for (const e of (m.events || [])) {
+        if (e.type === 'tool_call') html += '<div class="tool">🔧 <span class="call">' + esc(e.name) + '(' + esc(JSON.stringify(e.args || {})) + ')</span></div>';
+        else if (e.type === 'tool_result') html += '<div class="tool"><details><summary>resultat</summary><pre>' + esc(String(e.result)) + '</pre></details></div>';
+        else if (e.type === 'assistant') html += md(e.content);
+        else if (e.type === 'error' || e.error) html += '<p class="error">' + esc(e.error || 'feil') + '</p>';
+      }
+      if (m.running) html += '<div class="loading"><span></span><span></span><span></span></div>';
+      el.innerHTML = html || '<div class="loading"><span></span><span></span><span></span></div>';
     } else {
       let html = '';
       if (m.thinking) html += '<details class="think"><summary>Tenkte</summary><div>' + esc(m.thinking) + '</div></details>';
@@ -312,6 +329,15 @@ async function renderPdfToImages(f, maxPages = 5) {
 
 // Åpent vedlegg: alt slippes inn. Bilde → vision, tekst → tekst, PDF → tekst/bilde, resten → hex-oppsummering.
 async function addFiles(list) {
+  // Agent-modus: ikke prosesser her — last opp rå-fila til serveren, verktøyene håndterer den.
+  if ($('agentToggle').checked) {
+    for (const f of list) {
+      if (f.size > 55 * 1024 * 1024) { alert(f.name + ' er over 55 MB.'); continue; }
+      pending.push({ name: f.name, raw: f });
+    }
+    renderPending();
+    return;
+  }
   for (const f of list) {
     const isImg = /\.(png|jpe?g|gif|webp|bmp|avif|heic|heif|tiff?)$/i.test(f.name) || (f.type && f.type.startsWith('image/'));
     const isPdf = /\.pdf$/i.test(f.name) || f.type === 'application/pdf';
@@ -355,6 +381,7 @@ async function send() {
   if (controller) { controller.abort(); return; } // knappen er "Stopp" mens svaret strømmer
   const text = $('input').value.trim();
   if (!text && !pending.length) return;
+  if ($('agentToggle').checked) return sendAgent(text);
 
   const imageAtts = pending.filter((f) => f.image);
   // Vision-vakt: bilder krever en modell som kan se bilder.
@@ -412,6 +439,63 @@ async function send() {
   }
 }
 
+// Agent-modus: last opp rå-filer, kjør verktøy-løkka på serveren, vis hvert steg.
+async function fileToB64(f) {
+  const buf = new Uint8Array(await f.arrayBuffer());
+  let s = ''; for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]);
+  return btoa(s);
+}
+async function sendAgent(text) {
+  const raws = pending.filter((f) => f.raw);
+  const names = raws.map((f) => f.name);
+  // Last opp filene
+  for (const f of raws) {
+    try {
+      const data = await fileToB64(f.raw);
+      await fetch('/api/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename: f.name, data }) });
+    } catch (e) { alert('Opplasting av ' + f.name + ' feilet: ' + e.message); return; }
+  }
+  messages.push({ role: 'user', content: text + (names.length ? '\n\nTilgjengelige filer: ' + names.join(', ') : ''), text, files: names });
+  const reply = { role: 'assistant', agent: true, events: [], running: true };
+  messages.push(reply);
+  pending = []; renderPending();
+  $('input').value = ''; grow(); render();
+
+  controller = new AbortController();
+  $('send').textContent = 'Stopp';
+  try {
+    const res = await fetch('/api/agent', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: sel.value || undefined, messages: [{ role: 'user', content: messages[messages.length - 2].content }] }),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'HTTP ' + res.status);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n'); buf = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const e = JSON.parse(line);
+        if (e.type === 'done') continue;
+        reply.events.push(e);
+      }
+      render();
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') reply.events.push({ type: 'error', error: 'Feil: ' + e.message });
+  } finally {
+    reply.running = false;
+    controller = null;
+    $('send').textContent = 'Send';
+    save(); render();
+  }
+}
+
 function grow() { const t = $('input'); t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }
 $('input').addEventListener('input', grow);
 $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
@@ -435,11 +519,27 @@ function updateStatus() {
 }
 sel.onchange = () => { try { localStorage.setItem(MODEL_KEY, sel.value); } catch {} updateStatus(); };
 
+// Agent-modus velger standard agent-modell (Devstral) hvis den finnes; husker brukerens eget valg etterpå.
+let agentDefault = '';
+let prevModel = '';
+$('agentToggle').onchange = () => {
+  if ($('agentToggle').checked) {
+    if (agentDefault && [...sel.options].some((o) => o.value === agentDefault)) {
+      prevModel = sel.value; sel.value = agentDefault; sel.dispatchEvent(new Event('change'));
+    }
+    $('input').placeholder = 'Agent-modus: beskriv oppgaven, legg ved filer…';
+  } else {
+    if (prevModel && [...sel.options].some((o) => o.value === prevModel)) { sel.value = prevModel; sel.dispatchEvent(new Event('change')); }
+    $('input').placeholder = 'Skriv en melding… (Enter sender, Shift+Enter ny linje)';
+  }
+};
+
 fetch('/api/health').then((r) => r.json()).then((h) => {
   const s = $('status');
   $('docModel').textContent = h.model;
   if (!h.ollama) { sel.innerHTML = '<option>–</option>'; s.className = 'bad'; s.textContent = 'Ollama kjører ikke'; return; }
   visionSet = new Set(h.vision || []);
+  agentDefault = h.agentDefault || '';
   const models = h.models && h.models.length ? h.models : [h.model];
   let saved = null; try { saved = localStorage.getItem(MODEL_KEY); } catch {}
   const chosen = models.includes(saved) ? saved : (models.includes(h.model) ? h.model : models[0]);
