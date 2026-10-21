@@ -3,6 +3,13 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [1.12.0] — 2026-10-21
+
+### Added
+- Lokal fil-modus: godkjenn en mappe i nettsiden, så kan agenten lese store filer (RAM-dumper, disk-images) direkte via full sti — uten opplasting og uten 60 MB-grensen.
+- Nytt verktøy `list_lokale_filer` (lister filer i en godkjent mappe). Alle fil-verktøy godtar nå full sti, men kun til filer i en godkjent mappe (sti-validering mot vilkårlig lesing).
+- `/api/localroot` registrerer/tømmer godkjente mapper; valget huskes i nettleseren og re-registreres ved oppstart.
+
 ## [1.11.0] — 2026-10-21
 
 ### Added

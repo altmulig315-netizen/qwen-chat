@@ -66,6 +66,13 @@ async function main() {
     ok('X-App-Version-header = ' + source, page.headers.get('x-app-version') === source, page.headers.get('x-app-version'));
     ok('siden har no-store (ingen bufring)', (page.headers.get('cache-control') || '').includes('no-store'), page.headers.get('cache-control'));
 
+    // Lokal fil-modus: /api/localroot godkjenner en ekte mappe og avviser en som ikke finnes.
+    const lr1 = await fetch(base + '/api/localroot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: __dirname }) });
+    const lr1d = await lr1.json();
+    ok('localroot godkjenner mappe', lr1.ok && (lr1d.roots || []).some((r) => r.includes('qwen-chat')), (lr1d.roots || []).length + ' mapper');
+    const lr2 = await fetch(base + '/api/localroot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: 'Z:\\finnes-ikke-xyz-123' }) });
+    ok('localroot avviser ugyldig mappe', lr2.status === 400, 'status ' + lr2.status);
+
     // 3. Ollama og modellen — påkrevd kun på kjøre-PC-en (markørfila .kjore-pc, synkes ikke).
     const runPc = fs.existsSync(path.join(__dirname, '.kjore-pc'));
     const h = await (await fetch(base + '/api/health')).json();

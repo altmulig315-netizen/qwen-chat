@@ -24,6 +24,7 @@ const AGENT_SYSTEM = [
   '- Følg "notes" i verktøy-svarene — de sier hva neste steg bør være.',
   '- Oppsummer og oppgi flagget FØRST når du faktisk har lest det (f.eks. via spør_vision), ikke før.',
   '- Verktøy for forensics: steganalyse (LSB/stego), yara_scan (signaturer), pe_info (EXE/DLL), volatility (RAM-dump), disk_analyser (disk-image). Velg riktig verktøy for filtypen.',
+  '- Store lokale filer (RAM-dumper, disk-images) lastes IKKE opp. Bruk list_lokale_filer for å se filer i en godkjent mappe, og gi så full sti som filename til verktøyene.',
   '- Dekker ikke de ferdige verktøyene oppgaven? Skriv egen Python-kode med kjor_python (numpy/scipy/yara/pefile/pytsk3/Pillow finnes). Print alltid resultatet. Brukeren må godkjenne hver kjøring.',
   'Svar på norsk.',
 ].join('\n');
@@ -124,6 +125,27 @@ async function chat(req, res) {
 function ensureUpload() { if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true }); }
 const safeName = (n) => path.basename(String(n || '')).replace(/[^A-Za-z0-9._-]/g, '_');
 
+// Lokal fil-modus: mapper brukeren har godkjent at agenten får lese fra (for store filer uten opplasting).
+const allowedRoots = new Set();
+function isUnderAllowed(abs) {
+  const r = path.resolve(abs);
+  for (const root of allowedRoots) {
+    const rr = path.resolve(root);
+    if (r === rr || r.startsWith(rr + path.sep)) return true;
+  }
+  return false;
+}
+// Finn fila: absolutt sti (kun i godkjent mappe) ELLER opplastet filnavn i uploads/.
+function resolveFile(name) {
+  if (!name) return null;
+  if (path.isAbsolute(name)) {
+    const abs = path.resolve(name);
+    return (isUnderAllowed(abs) && fs.existsSync(abs)) ? abs : null;
+  }
+  const up = path.join(UPLOAD_DIR, safeName(name));
+  return fs.existsSync(up) ? up : null;
+}
+
 // Kjør et av VÅRE python-skript (ikke brukerens fil) med -I, filsti som argument.
 function runPy(script, args) {
   return new Promise((resolve) => {
@@ -135,6 +157,7 @@ function runPy(script, args) {
 // Verktøy-definisjoner som sendes til modellen.
 const TOOLS = [
   { type: 'function', function: { name: 'list_vedlegg', description: 'List opplastede filer som kan analyseres', parameters: { type: 'object', properties: {} } } },
+  { type: 'function', function: { name: 'list_lokale_filer', description: 'List filer i en godkjent lokal mappe (for store filer uten opplasting, f.eks. RAM-dumper/disk-images). Oppgi full mappesti.', parameters: { type: 'object', properties: { folder: { type: 'string' } }, required: ['folder'] } } },
   { type: 'function', function: { name: 'analyser_fil', description: 'Analyser en fil: finn signaturer, pakk ut innebygde lag (zip/bilder), søk etter flagg. Utpakkede filer blir nye vedlegg.', parameters: { type: 'object', properties: { filename: { type: 'string' } }, required: ['filename'] } } },
   { type: 'function', function: { name: 'dekod_lyd', description: 'Dekod en lydfil (WAV): prøv SSTV (lager bilde) og FSK. Bruk spør_vision på SSTV-bildet etterpå.', parameters: { type: 'object', properties: { filename: { type: 'string' } }, required: ['filename'] } } },
   { type: 'function', function: { name: 'les_vedlegg', description: 'Les tekstinnholdet i en opplastet fil', parameters: { type: 'object', properties: { filename: { type: 'string' } }, required: ['filename'] } } },
@@ -162,10 +185,15 @@ async function askVision(file, question) {
 async function executeTool(name, args) {
   try {
     if (name === 'list_vedlegg') { ensureUpload(); return JSON.stringify({ files: fs.readdirSync(UPLOAD_DIR) }); }
+    if (name === 'list_lokale_filer') {
+      const f = path.resolve(String(args.folder || ''));
+      if (!isUnderAllowed(f)) return JSON.stringify({ error: 'Mappa er ikke godkjent. Godkjente mapper: ' + ([...allowedRoots].join(', ') || 'ingen') });
+      try { return JSON.stringify({ folder: f, files: fs.readdirSync(f).slice(0, 300) }); } catch (e) { return JSON.stringify({ error: String(e.message) }); }
+    }
     const fileTools = ['analyser_fil', 'dekod_lyd', 'les_vedlegg', 'spor_vision', 'steganalyse', 'yara_scan', 'pe_info', 'volatility', 'disk_analyser'];
-    const file = path.join(UPLOAD_DIR, safeName(args.filename));
-    if (fileTools.includes(name) && !fs.existsSync(file))
-      return JSON.stringify({ error: 'Finner ikke fila ' + args.filename });
+    const file = resolveFile(args.filename);
+    if (fileTools.includes(name) && !file)
+      return JSON.stringify({ error: 'Finner ikke fila (eller ikke i godkjent mappe): ' + args.filename + '. Lokale filer må ligge i en godkjent mappe.' });
     if (name === 'analyser_fil') return await runPy('analyze.py', [file, UPLOAD_DIR]);
     if (name === 'dekod_lyd') return await runPy('audio.py', [file, UPLOAD_DIR]);
     if (name === 'les_vedlegg') return fs.readFileSync(file, 'utf8').slice(0, 20000);
@@ -291,6 +319,20 @@ function clearUploads() {
   }
 }
 
+async function localroot(req, res) {
+  let body;
+  try { body = JSON.parse(await readBody(req)); } catch (e) { return send(res, 400, { error: e.message }); }
+  if (body.clear) { allowedRoots.clear(); return send(res, 200, { roots: [] }); }
+  if (body.path) {
+    const p = path.resolve(String(body.path));
+    try {
+      if (!fs.statSync(p).isDirectory()) return send(res, 400, { error: 'Ikke en mappe: ' + p });
+    } catch { return send(res, 400, { error: 'Mappa finnes ikke: ' + p }); }
+    allowedRoots.add(p);
+  }
+  return send(res, 200, { roots: [...allowedRoots] });
+}
+
 async function upload(req, res) {
   let body;
   try { body = JSON.parse(await readBody(req)); } catch (e) { return send(res, 400, { error: e.message }); }
@@ -320,6 +362,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'POST' && url === '/api/chat') return chat(req, res);
   if (req.method === 'POST' && url === '/api/upload') return upload(req, res);
+  if (req.method === 'POST' && url === '/api/localroot') return localroot(req, res);
   if (req.method === 'POST' && url === '/api/agent') return agent(req, res);
   if (req.method === 'POST' && url === '/api/agent/resume') return agentResume(req, res);
   send(res, 404, { error: 'Ikke funnet' });

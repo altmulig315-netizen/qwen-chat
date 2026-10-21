@@ -43,6 +43,9 @@
   }
   #agentLbl { font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
   #ctxSelect { font: inherit; font-size: 13px; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 4px 6px; }
+  #localPath { flex: 1; min-width: 0; font: inherit; font-size: 13px; color: var(--text); background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; }
+  #roots { margin-top: 6px; }
+  #roots .chip b { color: var(--muted); cursor: default; }
   .tool { font-size: 14px; margin: 4px 0; }
   .tool .call { color: var(--accent); font-family: ui-monospace, monospace; }
   .tool details { color: var(--muted); }
@@ -116,7 +119,7 @@
 
 <header>
   <h1>Abliterated</h1>
-  <span class="ver" data-stamp="header">v1.11.0</span>
+  <span class="ver" data-stamp="header">v1.12.0</span>
   <select id="modelSelect" title="Velg modell"><option>laster…</option></select>
   <label id="agentLbl" title="Agent-modus: modellen bruker verktøy (filanalyse, lyd, vision) i en løkke"><input type="checkbox" id="agentToggle"> 🔧 Agent</label>
   <select id="ctxSelect" title="Kontekstvindu (modellens hukommelse). Større = husker mer, men tregere.">
@@ -140,22 +143,26 @@
     <div class="row">
       <button id="attachBtn" title="Legg ved fil (tekst, kode, PDF, bilde)">📎 Fil</button>
       <input type="file" id="file" multiple hidden>
+      <input id="localPath" placeholder="📁 Lokal mappe for store filer (lim inn sti)…" title="Godkjenn en mappe agenten får lese store filer fra (RAM-dumper, disk-images)">
+      <button id="addRoot" title="Godkjenn mappa">Godkjenn</button>
       <span class="spacer"></span>
       <button id="send">Send</button>
     </div>
+    <div class="chips" id="roots"></div>
   </div>
 </div>
 
-<footer data-stamp="footer">Abliterated v1.11.0 · kjører lokalt via Ollama</footer>
+<footer data-stamp="footer">Abliterated v1.12.0 · kjører lokalt via Ollama</footer>
 
 <div id="docs">
   <div class="card">
     <strong>Om Abliterated</strong>
     <table>
-      <tr><td>Versjon</td><td data-stamp="docs">1.11.0</td></tr>
+      <tr><td>Versjon</td><td data-stamp="docs">1.12.0</td></tr>
       <tr><td>Modell</td><td id="docModel">–</td></tr>
       <tr><td>Backend</td><td>Ollama (localhost:11434)</td></tr>
       <tr><td>Kontekst</td><td>Velgbar 16K–128K (modellens hukommelse). Større = husker mer, tregere. «Ny samtale» tømmer alt.</td></tr>
+      <tr><td>Lokal mappe 📁</td><td>Godkjenn en mappe så agenten kan lese store filer (RAM-dumper, disk-images) direkte — uten opplasting/størrelsesgrense.</td></tr>
       <tr><td>Vedlegg</td><td>Alt: bilde (→ vision), tekst/kode, PDF, ellers hex-oppsummering</td></tr>
       <tr><td>Agent 🔧</td><td>Verktøy: analyser_fil, dekod_lyd, spør_vision, steganalyse, yara_scan, pe_info, volatility, disk_analyser, kjør_python (godkjenning). Standard: Devstral</td></tr>
     </table>
@@ -504,7 +511,8 @@ async function sendAgent(text) {
       await fetch('/api/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename: raws[i].name, data, reset: i === 0 }) });
     } catch (e) { alert('Opplasting av ' + raws[i].name + ' feilet: ' + e.message); return; }
   }
-  const content = text + (names.length ? '\n\nNye filer lastet opp: ' + names.join(', ') : '');
+  const rootNote = localRoots.length ? '\n\nGodkjente lokale mapper (bruk list_lokale_filer der for store filer): ' + localRoots.join(', ') : '';
+  const content = text + (names.length ? '\n\nNye filer lastet opp: ' + names.join(', ') : '') + rootNote;
   messages.push({ role: 'user', content, text, files: names });
   const reply = { role: 'assistant', agent: true, events: [] };
   messages.push(reply);
@@ -555,6 +563,24 @@ const ctxSel = $('ctxSelect');
 try { const sc = localStorage.getItem('qwen-chat-ctx'); if (sc && [...ctxSel.options].some((o) => o.value === sc)) ctxSel.value = sc; } catch {}
 ctxSel.onchange = () => { try { localStorage.setItem('qwen-chat-ctx', ctxSel.value); } catch {} };
 const getCtx = () => Number(ctxSel.value) || 32768;
+
+// Lokal fil-modus: godkjente mapper agenten får lese store filer fra.
+let localRoots = [];
+function renderRoots() { $('roots').innerHTML = localRoots.map((r) => '<span class="chip">📁 ' + esc(r) + '</span>').join(''); }
+async function addLocalRoot(p) {
+  if (!p || !p.trim()) return;
+  try {
+    const r = await fetch('/api/localroot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: p.trim() }) });
+    const d = await r.json();
+    if (!r.ok) { alert(d.error || 'Kunne ikke godkjenne mappa'); return; }
+    localRoots = d.roots || [];
+    try { localStorage.setItem('qwen-chat-roots', JSON.stringify(localRoots)); } catch {}
+    renderRoots(); $('localPath').value = '';
+  } catch (e) { alert('Feil: ' + e.message); }
+}
+$('addRoot').onclick = () => addLocalRoot($('localPath').value);
+$('localPath').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addLocalRoot($('localPath').value); } });
+try { JSON.parse(localStorage.getItem('qwen-chat-roots') || '[]').forEach((r) => addLocalRoot(r)); } catch {}
 function updateStatus() {
   const s = $('status');
   s.className = 'ok'; s.textContent = (sel.value || '–') + (visionSet.has(sel.value) ? ' 👁' : '');
