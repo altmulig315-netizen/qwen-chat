@@ -3,6 +3,11 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [1.12.1] — 2026-10-21
+
+### Fixed
+- `disk_analyser` valgte feil partisjon (meta-partisjonen «Partition Table» i stedet for datapartisjonen), så filsystemet ikke kunne åpnes. Velger nå den største ekte datapartisjonen. Verifisert på et ekte Tails disk-image.
+
 ## [1.12.0] — 2026-10-21
 
 ### Added

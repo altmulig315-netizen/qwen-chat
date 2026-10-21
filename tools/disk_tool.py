@@ -37,16 +37,18 @@ def main(path, action):
     except Exception:
         res['notes'] = ['Ingen partisjonstabell — åpner som ett filsystem.']
     if action == 'files':
-        try:
-            offset = 0
-            # finn første ekte partisjon hvis tabell finnes
-            for p in res['partisjoner']:
-                if p['lengde'] > 2 and 'Unalloc' not in p['beskrivelse']:
-                    offset = p['start'] * 512; break
-            fs = pytsk3.FS_Info(img, offset=offset)
-            res['filer'] = list_files(fs)[:200]
-        except Exception as e:
-            res['feil_filsystem'] = str(e)[:120]
+        # velg den STØRSTE ekte datapartisjonen (hopp over meta: GPT, tabell, safety, unallocated)
+        meta = ('Unalloc', 'Safety', 'GPT', 'Partition Table', 'Meta')
+        cands = [p for p in res['partisjoner'] if p['lengde'] > 64 and not any(m in p['beskrivelse'] for m in meta)]
+        offsets = ([max(cands, key=lambda p: p['lengde'])['start'] * 512] if cands else []) + [0]
+        for offset in offsets:
+            try:
+                fs = pytsk3.FS_Info(img, offset=offset)
+                res['filsystem_offset'] = offset
+                res['filer'] = list_files(fs)[:200]
+                break
+            except Exception as e:
+                res['feil_filsystem'] = str(e)[:120]
     return res
 
 if __name__ == '__main__':

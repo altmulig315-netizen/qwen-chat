@@ -185,6 +185,8 @@ async function main() {
       ok('steganalyse-verktøy kjører', stOut.includes('"file"'), stOut.slice(0, 40));
       const yrOut = runTool('yara_tool.py', [path.join(__dirname, 'test', 'test.pdf')]);
       ok('yara_scan-verktøy kjører', yrOut.includes('regelsett'), yrOut.slice(0, 40));
+      const dkOut = runTool('disk_tool.py', [path.join(__dirname, 'test', 'test.pdf'), 'partitions']);
+      ok('disk_analyser-verktøy kjører', dkOut.includes('partisjoner'), dkOut.slice(0, 40));
 
       // Hjelper: send innhold og samle hele svaret.
       const ask = async (content) => {
