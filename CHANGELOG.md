@@ -3,6 +3,14 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [1.10.0] — 2026-10-21
+
+### Added
+- Kontekst-velger i headeren (16K / 32K / 64K / 128K): juster modellens hukommelse selv. Valget huskes og sendes med hver melding (chat og agent). Større = husker mer, men tregere (overskuddet spiller over til system-RAM).
+
+### Changed
+- Standard kontekstvindu hevet fra 16K til 32K — mindre glemming og repetisjon.
+
 ## [1.9.1] — 2026-10-21
 
 ### Fixed

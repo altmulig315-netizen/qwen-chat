@@ -42,6 +42,7 @@
     border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; max-width: 320px;
   }
   #agentLbl { font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+  #ctxSelect { font: inherit; font-size: 13px; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 4px 6px; }
   .tool { font-size: 14px; margin: 4px 0; }
   .tool .call { color: var(--accent); font-family: ui-monospace, monospace; }
   .tool details { color: var(--muted); }
@@ -115,9 +116,15 @@
 
 <header>
   <h1>Abliterated</h1>
-  <span class="ver" data-stamp="header">v1.9.1</span>
+  <span class="ver" data-stamp="header">v1.10.0</span>
   <select id="modelSelect" title="Velg modell"><option>laster…</option></select>
   <label id="agentLbl" title="Agent-modus: modellen bruker verktøy (filanalyse, lyd, vision) i en løkke"><input type="checkbox" id="agentToggle"> 🔧 Agent</label>
+  <select id="ctxSelect" title="Kontekstvindu (modellens hukommelse). Større = husker mer, men tregere.">
+    <option value="16384">16K</option>
+    <option value="32768" selected>32K</option>
+    <option value="65536">64K</option>
+    <option value="131072">128K</option>
+  </select>
   <span id="status">sjekker…</span>
   <span class="spacer"></span>
   <button id="aboutBtn">Om</button>
@@ -139,15 +146,16 @@
   </div>
 </div>
 
-<footer data-stamp="footer">Abliterated v1.9.1 · kjører lokalt via Ollama</footer>
+<footer data-stamp="footer">Abliterated v1.10.0 · kjører lokalt via Ollama</footer>
 
 <div id="docs">
   <div class="card">
     <strong>Om Abliterated</strong>
     <table>
-      <tr><td>Versjon</td><td data-stamp="docs">1.9.1</td></tr>
+      <tr><td>Versjon</td><td data-stamp="docs">1.10.0</td></tr>
       <tr><td>Modell</td><td id="docModel">–</td></tr>
       <tr><td>Backend</td><td>Ollama (localhost:11434)</td></tr>
+      <tr><td>Kontekst</td><td>Velgbar 16K–128K (modellens hukommelse). Større = husker mer, tregere. «Ny samtale» tømmer alt.</td></tr>
       <tr><td>Vedlegg</td><td>Alt: bilde (→ vision), tekst/kode, PDF, ellers hex-oppsummering</td></tr>
       <tr><td>Agent 🔧</td><td>Verktøy-løkke: analyser_fil, dekod_lyd, spør_vision, og kjør_python (egen kode, krever godkjenning). Standard: Devstral</td></tr>
     </table>
@@ -414,7 +422,7 @@ async function send() {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: $('modelSelect').value || undefined, messages: messages.slice(0, -1).map((m) => (m.images && m.images.length ? { role: m.role, content: m.content, images: m.images } : { role: m.role, content: m.content })) }),
+      body: JSON.stringify({ model: $('modelSelect').value || undefined, num_ctx: getCtx(), messages: messages.slice(0, -1).map((m) => (m.images && m.images.length ? { role: m.role, content: m.content, images: m.images } : { role: m.role, content: m.content })) }),
       signal: controller.signal,
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'HTTP ' + res.status);
@@ -508,7 +516,7 @@ async function sendAgent(text) {
     if (m.agent) return { role: 'assistant', content: (m.events || []).filter((e) => e.type === 'assistant').map((e) => e.content).join('\n') || '(brukte verktøy)' };
     return { role: 'assistant', content: m.content || '' };
   }).filter((m) => m.content);
-  await streamAgent('/api/agent', { model: sel.value || undefined, messages: history }, reply);
+  await streamAgent('/api/agent', { model: sel.value || undefined, num_ctx: getCtx(), messages: history }, reply);
 }
 
 // Brukeren godkjenner/avviser en python-kjøring.
@@ -543,6 +551,10 @@ box.addEventListener('drop', (e) => { e.preventDefault(); box.classList.remove('
 
 const MODEL_KEY = 'qwen-chat-model';
 const sel = $('modelSelect');
+const ctxSel = $('ctxSelect');
+try { const sc = localStorage.getItem('qwen-chat-ctx'); if (sc && [...ctxSel.options].some((o) => o.value === sc)) ctxSel.value = sc; } catch {}
+ctxSel.onchange = () => { try { localStorage.setItem('qwen-chat-ctx', ctxSel.value); } catch {} };
+const getCtx = () => Number(ctxSel.value) || 32768;
 function updateStatus() {
   const s = $('status');
   s.className = 'ok'; s.textContent = (sel.value || '–') + (visionSet.has(sel.value) ? ' 👁' : '');

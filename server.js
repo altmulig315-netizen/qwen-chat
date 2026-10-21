@@ -11,7 +11,9 @@ const MODEL = process.env.MODEL || 'qwen3.8:27b';
 const AGENT_MODEL = process.env.AGENT_MODEL || 'devstral:24b-small-2505-q4_K_M'; // mest pålitelige verktøy-kaller
 const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, 'version.json'), 'utf8')).version;
 const MAX_BODY = 60 * 1024 * 1024; // 60 MB (opplasting av filer til analyse)
-const NUM_CTX = Number(process.env.NUM_CTX) || 16384; // kontekstvindu; større = lengre vedlegg, tregere
+const NUM_CTX = Number(process.env.NUM_CTX) || 32768; // standard kontekstvindu; større = mer hukommelse, tregere
+const MAX_CTX = Number(process.env.MAX_CTX) || 131072;
+const clampCtx = (n) => Math.min(MAX_CTX, Math.max(2048, Number(n) || NUM_CTX));
 const SYSTEM = 'Du er en hjelpsom assistent. Svar alltid på norsk (bokmål), med mindre brukeren eksplisitt ber om et annet språk.';
 const AGENT_SYSTEM = [
   'Du er en CTF- og filanalyse-agent. Jobben din er å finne det skjulte flagget ved å følge sporene helt til mål.',
@@ -102,7 +104,7 @@ async function chat(req, res) {
     upstream = await fetch(OLLAMA + '/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages: [{ role: 'system', content: SYSTEM }, ...body.messages], stream: true, options: { num_ctx: NUM_CTX } }),
+      body: JSON.stringify({ model, messages: [{ role: 'system', content: SYSTEM }, ...body.messages], stream: true, options: { num_ctx: clampCtx(body.num_ctx) } }),
       signal: ac.signal,
     });
   } catch (e) {
@@ -186,10 +188,10 @@ function executePython(code) {
 }
 
 // Verktøy-løkka. Pauser (return) når modellen vil kjøre python, og venter på godkjenning.
-async function runLoop(res, model, messages, startStep, emit) {
+async function runLoop(res, model, messages, startStep, emit, numCtx) {
   for (let step = startStep; step < 16; step++) {
     const r = await fetch(OLLAMA + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages, tools: TOOLS, stream: false, options: { num_ctx: NUM_CTX } }) });
+      body: JSON.stringify({ model, messages, tools: TOOLS, stream: false, options: { num_ctx: numCtx } }) });
     if (!r.ok) { emit({ error: await r.text() }); return; }
     const d = await r.json();
     const msg = d.message || {};
@@ -203,7 +205,7 @@ async function runLoop(res, model, messages, startStep, emit) {
       let a = c.function.arguments; if (typeof a === 'string') { try { a = JSON.parse(a); } catch { a = {}; } }
       if (fn === 'kjor_python') {
         const id = newId();
-        pendingRuns.set(id, { model, messages, step, remaining: calls.slice(i + 1) });
+        pendingRuns.set(id, { model, messages, step, remaining: calls.slice(i + 1), numCtx });
         emit({ type: 'approval', id, code: String((a && a.code) || ''), hensikt: String((a && a.hensikt) || '') });
         return; // stream slutter; UI gjenopptar via /api/agent/resume
       }
@@ -227,7 +229,7 @@ async function agent(req, res) {
   res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'X-App-Version': VERSION });
   const emit = (o) => res.write(JSON.stringify(o) + '\n');
   const messages = [{ role: 'system', content: AGENT_SYSTEM }, ...body.messages];
-  try { await runLoop(res, model, messages, 0, emit); } catch (e) { emit({ error: String(e.message || e) }); }
+  try { await runLoop(res, model, messages, 0, emit, clampCtx(body.num_ctx)); } catch (e) { emit({ error: String(e.message || e) }); }
   res.end();
 }
 
@@ -256,7 +258,7 @@ async function agentResume(req, res) {
       let a = c.function.arguments; if (typeof a === 'string') { try { a = JSON.parse(a); } catch { a = {}; } }
       if (fn === 'kjor_python') {
         const id = newId();
-        pendingRuns.set(id, { model: st.model, messages: st.messages, step: st.step, remaining: [] });
+        pendingRuns.set(id, { model: st.model, messages: st.messages, step: st.step, remaining: [], numCtx: st.numCtx });
         emit({ type: 'approval', id, code: String((a && a.code) || ''), hensikt: String((a && a.hensikt) || '') });
         return res.end();
       }
@@ -265,7 +267,7 @@ async function agentResume(req, res) {
       emit({ type: 'tool_result', name: fn, result: String(r2).slice(0, 2000) });
       st.messages.push({ role: 'tool', content: String(r2) });
     }
-    await runLoop(res, st.model, st.messages, st.step + 1, emit);
+    await runLoop(res, st.model, st.messages, st.step + 1, emit, st.numCtx || NUM_CTX);
   } catch (e) { emit({ error: String(e.message || e) }); }
   res.end();
 }
