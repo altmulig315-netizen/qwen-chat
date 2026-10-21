@@ -23,7 +23,8 @@ const AGENT_SYSTEM = [
   '- Når analyser_fil pakker ut filer: analyser dem videre. Lydfil (WAV) → kall dekod_lyd. Lagde den et SSTV-bilde → kall spør_vision på det bildet for å lese teksten. Bildefil → kall spør_vision.',
   '- Følg "notes" i verktøy-svarene — de sier hva neste steg bør være.',
   '- Oppsummer og oppgi flagget FØRST når du faktisk har lest det (f.eks. via spør_vision), ikke før.',
-  '- Dekker ikke de ferdige verktøyene oppgaven? Skriv egen Python-kode med kjor_python (numpy/scipy finnes). Print alltid resultatet. Brukeren må godkjenne hver kjøring.',
+  '- Verktøy for forensics: steganalyse (LSB/stego), yara_scan (signaturer), pe_info (EXE/DLL), volatility (RAM-dump), disk_analyser (disk-image). Velg riktig verktøy for filtypen.',
+  '- Dekker ikke de ferdige verktøyene oppgaven? Skriv egen Python-kode med kjor_python (numpy/scipy/yara/pefile/pytsk3/Pillow finnes). Print alltid resultatet. Brukeren må godkjenne hver kjøring.',
   'Svar på norsk.',
 ].join('\n');
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
@@ -138,6 +139,11 @@ const TOOLS = [
   { type: 'function', function: { name: 'dekod_lyd', description: 'Dekod en lydfil (WAV): prøv SSTV (lager bilde) og FSK. Bruk spør_vision på SSTV-bildet etterpå.', parameters: { type: 'object', properties: { filename: { type: 'string' } }, required: ['filename'] } } },
   { type: 'function', function: { name: 'les_vedlegg', description: 'Les tekstinnholdet i en opplastet fil', parameters: { type: 'object', properties: { filename: { type: 'string' } }, required: ['filename'] } } },
   { type: 'function', function: { name: 'spor_vision', description: 'La en vision-modell se på et bilde og svare på et spørsmål (f.eks. lese tekst/flagg)', parameters: { type: 'object', properties: { filename: { type: 'string' }, question: { type: 'string' } }, required: ['filename', 'question'] } } },
+  { type: 'function', function: { name: 'steganalyse', description: 'Steganalyse av en fil: LSB-ekstraksjon fra bilder, strenger, data skjult etter filslutt, metadata, flagg-søk.', parameters: { type: 'object', properties: { filename: { type: 'string' } }, required: ['filename'] } } },
+  { type: 'function', function: { name: 'yara_scan', description: 'Søk i en fil med YARA-regler. Uten egne regler brukes et standardsett (PE/ELF, URL, base64, flagg, mistenkelige API). Gi egne regler i "rules" ved behov.', parameters: { type: 'object', properties: { filename: { type: 'string' }, rules: { type: 'string' } }, required: ['filename'] } } },
+  { type: 'function', function: { name: 'pe_info', description: 'Analyser en Windows-binær (EXE/DLL): seksjoner, entropi (pakket?), imports, mistenkelige API-kall.', parameters: { type: 'object', properties: { filename: { type: 'string' } }, required: ['filename'] } } },
+  { type: 'function', function: { name: 'volatility', description: 'Minne-forensics på en RAM-dump med Volatility3. plugin f.eks. windows.info, windows.pslist, windows.netscan, windows.pstree, windows.cmdline. Standard: windows.info.', parameters: { type: 'object', properties: { filename: { type: 'string' }, plugin: { type: 'string' } }, required: ['filename'] } } },
+  { type: 'function', function: { name: 'disk_analyser', description: 'Disk-image-analyse (Sleuth Kit): list partisjoner eller filer. action = "partitions" (standard) eller "files".', parameters: { type: 'object', properties: { filename: { type: 'string' }, action: { type: 'string' } }, required: ['filename'] } } },
   { type: 'function', function: { name: 'kjor_python', description: 'Skriv og kjør egen Python-kode for analyse (numpy/scipy tilgjengelig; kjører i mappa med de opplastede filene). KREVER brukerens godkjenning før kjøring. Bruk til det de ferdige verktøyene ikke dekker, f.eks. egen FSK/LSB-dekoder.', parameters: { type: 'object', properties: { code: { type: 'string', description: 'Python-koden. Skriv ut resultatet med print().' }, hensikt: { type: 'string', description: 'Kort hva koden gjør' } }, required: ['code'] } } },
 ];
 
@@ -156,13 +162,19 @@ async function askVision(file, question) {
 async function executeTool(name, args) {
   try {
     if (name === 'list_vedlegg') { ensureUpload(); return JSON.stringify({ files: fs.readdirSync(UPLOAD_DIR) }); }
+    const fileTools = ['analyser_fil', 'dekod_lyd', 'les_vedlegg', 'spor_vision', 'steganalyse', 'yara_scan', 'pe_info', 'volatility', 'disk_analyser'];
     const file = path.join(UPLOAD_DIR, safeName(args.filename));
-    if (['analyser_fil', 'dekod_lyd', 'les_vedlegg', 'spor_vision'].includes(name) && !fs.existsSync(file))
+    if (fileTools.includes(name) && !fs.existsSync(file))
       return JSON.stringify({ error: 'Finner ikke fila ' + args.filename });
     if (name === 'analyser_fil') return await runPy('analyze.py', [file, UPLOAD_DIR]);
     if (name === 'dekod_lyd') return await runPy('audio.py', [file, UPLOAD_DIR]);
     if (name === 'les_vedlegg') return fs.readFileSync(file, 'utf8').slice(0, 20000);
     if (name === 'spor_vision') return await askVision(file, String(args.question || 'Hva ser du? Les eventuell tekst.'));
+    if (name === 'steganalyse') return await runPy('stego_tool.py', [file, UPLOAD_DIR]);
+    if (name === 'yara_scan') return await runPy('yara_tool.py', [file, String(args.rules || '')]);
+    if (name === 'pe_info') return await runPy('pe_tool.py', [file]);
+    if (name === 'volatility') return await runPy('vol_tool.py', [file, String(args.plugin || '')]);
+    if (name === 'disk_analyser') return await runPy('disk_tool.py', [file, String(args.action || 'partitions')]);
     return JSON.stringify({ error: 'Ukjent verktøy ' + name });
   } catch (e) { return JSON.stringify({ error: String(e.message || e) }); }
 }

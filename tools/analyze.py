@@ -1,6 +1,8 @@
 # analyse-verktøy for agenten. Kjør: python -I analyze.py <fil> <ut-mappe>
 # Skriver kompakt JSON til stdout: signaturer, utpakkede/carvede filer, flagg-kandidater.
 import sys, os, re, json, zipfile, io
+try: sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+except Exception: pass
 
 SIGS = {
     b'\x89PNG\r\n\x1a\n': 'png', b'\xff\xd8\xff': 'jpg', b'PK\x03\x04': 'zip',

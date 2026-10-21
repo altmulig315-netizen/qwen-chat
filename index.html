@@ -116,7 +116,7 @@
 
 <header>
   <h1>Abliterated</h1>
-  <span class="ver" data-stamp="header">v1.10.0</span>
+  <span class="ver" data-stamp="header">v1.11.0</span>
   <select id="modelSelect" title="Velg modell"><option>laster…</option></select>
   <label id="agentLbl" title="Agent-modus: modellen bruker verktøy (filanalyse, lyd, vision) i en løkke"><input type="checkbox" id="agentToggle"> 🔧 Agent</label>
   <select id="ctxSelect" title="Kontekstvindu (modellens hukommelse). Større = husker mer, men tregere.">
@@ -146,18 +146,18 @@
   </div>
 </div>
 
-<footer data-stamp="footer">Abliterated v1.10.0 · kjører lokalt via Ollama</footer>
+<footer data-stamp="footer">Abliterated v1.11.0 · kjører lokalt via Ollama</footer>
 
 <div id="docs">
   <div class="card">
     <strong>Om Abliterated</strong>
     <table>
-      <tr><td>Versjon</td><td data-stamp="docs">1.10.0</td></tr>
+      <tr><td>Versjon</td><td data-stamp="docs">1.11.0</td></tr>
       <tr><td>Modell</td><td id="docModel">–</td></tr>
       <tr><td>Backend</td><td>Ollama (localhost:11434)</td></tr>
       <tr><td>Kontekst</td><td>Velgbar 16K–128K (modellens hukommelse). Større = husker mer, tregere. «Ny samtale» tømmer alt.</td></tr>
       <tr><td>Vedlegg</td><td>Alt: bilde (→ vision), tekst/kode, PDF, ellers hex-oppsummering</td></tr>
-      <tr><td>Agent 🔧</td><td>Verktøy-løkke: analyser_fil, dekod_lyd, spør_vision, og kjør_python (egen kode, krever godkjenning). Standard: Devstral</td></tr>
+      <tr><td>Agent 🔧</td><td>Verktøy: analyser_fil, dekod_lyd, spør_vision, steganalyse, yara_scan, pe_info, volatility, disk_analyser, kjør_python (godkjenning). Standard: Devstral</td></tr>
     </table>
     <button id="closeDocs">Lukk</button>
   </div>

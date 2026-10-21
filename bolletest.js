@@ -169,6 +169,16 @@ async function main() {
       });
       ok('agent/resume avviser ukjent id', rz.status === 400, 'status ' + rz.status);
 
+      // Forensics-verktøyene kjører og gir JSON (node.exe er en PE-fil).
+      const cp = require('child_process');
+      const runTool = (script, a) => { try { return cp.execFileSync('python', ['-I', path.join(__dirname, 'tools', script), ...a], { timeout: 60000 }).toString(); } catch (e) { return (e.stdout ? e.stdout.toString() : '') + ' ' + e.message; } };
+      const peOut = runTool('pe_tool.py', [process.execPath]);
+      ok('pe_info-verktøy kjører', peOut.includes('seksjoner'), peOut.slice(0, 40));
+      const stOut = runTool('stego_tool.py', [path.join(__dirname, 'test', 'test.pdf'), __dirname]);
+      ok('steganalyse-verktøy kjører', stOut.includes('"file"'), stOut.slice(0, 40));
+      const yrOut = runTool('yara_tool.py', [path.join(__dirname, 'test', 'test.pdf')]);
+      ok('yara_scan-verktøy kjører', yrOut.includes('regelsett'), yrOut.slice(0, 40));
+
       // Hjelper: send innhold og samle hele svaret.
       const ask = async (content) => {
         const r = await fetch(base + '/api/chat', {

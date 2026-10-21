@@ -3,6 +3,12 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [1.11.0] — 2026-10-21
+
+### Added
+- Dedikerte forensics-/steganalyse-verktøy i agenten: `steganalyse` (LSB/append/metadata), `yara_scan` (signaturer, standard + egne regler), `pe_info` (EXE/DLL: entropi, imports, mistenkelige API), `volatility` (RAM-dump via Volatility3), `disk_analyser` (disk-image via Sleuth Kit/pytsk3).
+- Pakker installert: volatility3, yara-python, pefile, Pillow, pytsk3 (i tillegg til numpy/scipy). `kjør_python` har nå disse tilgjengelig.
+
 ## [1.10.0] — 2026-10-21
 
 ### Added

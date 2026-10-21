@@ -1,6 +1,8 @@
 # lyd-stego-dekoder for agenten. Kjør: python -I audio.py <wav> <ut-mappe>
 # Lager et SSTV-bilde (hvis det er SSTV) og prøver FSK. Skriver JSON til stdout.
 import sys, os, json, struct, zlib
+try: sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+except Exception: pass
 import numpy as np
 from scipy.io import wavfile
 from scipy.signal import hilbert, spectrogram
