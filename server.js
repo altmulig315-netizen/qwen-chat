@@ -270,11 +270,19 @@ async function agentResume(req, res) {
   res.end();
 }
 
+function clearUploads() {
+  if (!fs.existsSync(UPLOAD_DIR)) return;
+  for (const n of fs.readdirSync(UPLOAD_DIR)) {
+    try { fs.rmSync(path.join(UPLOAD_DIR, n), { recursive: true, force: true }); } catch {}
+  }
+}
+
 async function upload(req, res) {
   let body;
   try { body = JSON.parse(await readBody(req)); } catch (e) { return send(res, 400, { error: e.message }); }
   if (!body.filename || !body.data) return send(res, 400, { error: 'filename og data (base64) kreves' });
   ensureUpload();
+  if (body.reset) clearUploads(); // ny oppgave: fjern rester fra forrige kjøring
   const name = safeName(body.filename);
   try { fs.writeFileSync(path.join(UPLOAD_DIR, name), Buffer.from(body.data, 'base64')); }
   catch (e) { return send(res, 500, { error: String(e.message) }); }

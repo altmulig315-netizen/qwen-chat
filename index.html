@@ -115,7 +115,7 @@
 
 <header>
   <h1>Abliterated</h1>
-  <span class="ver" data-stamp="header">v1.9.0</span>
+  <span class="ver" data-stamp="header">v1.9.1</span>
   <select id="modelSelect" title="Velg modell"><option>laster…</option></select>
   <label id="agentLbl" title="Agent-modus: modellen bruker verktøy (filanalyse, lyd, vision) i en løkke"><input type="checkbox" id="agentToggle"> 🔧 Agent</label>
   <span id="status">sjekker…</span>
@@ -139,13 +139,13 @@
   </div>
 </div>
 
-<footer data-stamp="footer">Abliterated v1.9.0 · kjører lokalt via Ollama</footer>
+<footer data-stamp="footer">Abliterated v1.9.1 · kjører lokalt via Ollama</footer>
 
 <div id="docs">
   <div class="card">
     <strong>Om Abliterated</strong>
     <table>
-      <tr><td>Versjon</td><td data-stamp="docs">1.9.0</td></tr>
+      <tr><td>Versjon</td><td data-stamp="docs">1.9.1</td></tr>
       <tr><td>Modell</td><td id="docModel">–</td></tr>
       <tr><td>Backend</td><td>Ollama (localhost:11434)</td></tr>
       <tr><td>Vedlegg</td><td>Alt: bilde (→ vision), tekst/kode, PDF, ellers hex-oppsummering</td></tr>
@@ -489,19 +489,26 @@ async function streamAgent(url, bodyObj, reply) {
 async function sendAgent(text) {
   const raws = pending.filter((f) => f.raw);
   const names = raws.map((f) => f.name);
-  for (const f of raws) {
+  // Laster du opp nye filer, starter en fersk oppgave: tøm serverens uploads først (reset på første fil).
+  for (let i = 0; i < raws.length; i++) {
     try {
-      const data = await fileToB64(f.raw);
-      await fetch('/api/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename: f.name, data }) });
-    } catch (e) { alert('Opplasting av ' + f.name + ' feilet: ' + e.message); return; }
+      const data = await fileToB64(raws[i].raw);
+      await fetch('/api/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename: raws[i].name, data, reset: i === 0 }) });
+    } catch (e) { alert('Opplasting av ' + raws[i].name + ' feilet: ' + e.message); return; }
   }
-  const content = text + (names.length ? '\n\nTilgjengelige filer: ' + names.join(', ') : '');
+  const content = text + (names.length ? '\n\nNye filer lastet opp: ' + names.join(', ') : '');
   messages.push({ role: 'user', content, text, files: names });
   const reply = { role: 'assistant', agent: true, events: [] };
   messages.push(reply);
   pending = []; renderPending();
   $('input').value = ''; grow();
-  await streamAgent('/api/agent', { model: sel.value || undefined, messages: [{ role: 'user', content }] }, reply);
+  // Hukommelse: send hele samtalen (dine meldinger + agentens tidligere konklusjoner).
+  const history = messages.slice(0, -1).map((m) => {
+    if (m.role === 'user') return { role: 'user', content: m.content };
+    if (m.agent) return { role: 'assistant', content: (m.events || []).filter((e) => e.type === 'assistant').map((e) => e.content).join('\n') || '(brukte verktøy)' };
+    return { role: 'assistant', content: m.content || '' };
+  }).filter((m) => m.content);
+  await streamAgent('/api/agent', { model: sel.value || undefined, messages: history }, reply);
 }
 
 // Brukeren godkjenner/avviser en python-kjøring.

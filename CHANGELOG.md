@@ -3,6 +3,13 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [1.9.1] — 2026-10-21
+
+### Fixed
+- Agenten husker nå samtalen: hele historikken (dine meldinger + agentens tidligere konklusjoner) sendes med, så oppfølging som «start» beholder kontekst.
+- Fersk arbeidsmappe per oppgave: opplasting av nye filer tømmer `uploads/` først, så agenten ikke roter med rester fra tidligere kjøringer.
+- `dekod_lyd` sjekker at fila er WAV og gir en tydelig melding ellers (var en kryptisk scipy-feil når den ble kalt på et bilde).
+
 ## [1.9.0] — 2026-10-21
 
 ### Added

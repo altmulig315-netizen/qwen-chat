@@ -16,6 +16,9 @@ def png_gray(img, path):
 
 def main(path, outdir):
     os.makedirs(outdir, exist_ok=True)
+    head = open(path, 'rb').read(12)
+    if head[:4] not in (b'RIFF', b'RIFX', b'RF64'):
+        return {'error': os.path.basename(path) + ' er ikke en lydfil (WAV). Bruk dekod_lyd kun på WAV-filer; for bilder bruk spor_vision.'}
     rate, data = wavfile.read(path)
     if data.ndim > 1: data = data[:, 0]
     x = data.astype(np.float64)
