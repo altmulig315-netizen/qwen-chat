@@ -3,6 +3,11 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [1.13.1] — 2026-11-01
+
+### Changed
+- Systemprompt (chat): modellen får nå rollen «teknisk assistent for en cybersikkerhetsstudent i et lab-miljø» og bes svare direkte på tekniske spørsmål om systemadministrasjon, konfigurasjon, installasjon og sikkerhet. Demper unødig nøling fra modellen på vanlige IT-spørsmål. Ingen app-sperrer endret (godkjenning av kodekjøring, sti-validering og origin-sjekk står urørt).
+
 ## [1.13.0] — 2026-11-01
 
 ### Added

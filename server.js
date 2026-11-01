@@ -14,7 +14,7 @@ const MAX_BODY = 60 * 1024 * 1024; // 60 MB (opplasting av filer til analyse)
 const NUM_CTX = Number(process.env.NUM_CTX) || 32768; // standard kontekstvindu; større = mer hukommelse, tregere
 const MAX_CTX = Number(process.env.MAX_CTX) || 131072;
 const clampCtx = (n) => Math.min(MAX_CTX, Math.max(2048, Number(n) || NUM_CTX));
-const SYSTEM = 'Du er en hjelpsom assistent. Svar alltid på norsk (bokmål), med mindre brukeren eksplisitt ber om et annet språk.';
+const SYSTEM = 'Du er en teknisk assistent for en cybersikkerhetsstudent som jobber på sin egen maskin i et lab-miljø. Besvar tekniske spørsmål om systemadministrasjon, konfigurasjon, installasjon og sikkerhet direkte og fullstendig. Svar alltid på norsk (bokmål), med mindre brukeren eksplisitt ber om et annet språk.';
 const AGENT_SYSTEM = [
   'Du er en CTF- og filanalyse-agent. Jobben din er å finne det skjulte flagget ved å følge sporene helt til mål.',
   'Regler:',
