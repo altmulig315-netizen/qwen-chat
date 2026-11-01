@@ -28,6 +28,7 @@ function redPngBase64() {
   return png.toString('base64');
 }
 const full = process.argv.includes('--full');
+const noOllama = process.argv.includes('--no-ollama'); // hopp over Ollama-sjekkene (f.eks. ren tekst-commit)
 let failed = 0;
 const ok = (name, cond, info = '') => {
   console.log((cond ? '  ✓ ' : '  ✗ ') + name + (info ? '  (' + info + ')' : ''));
@@ -76,15 +77,17 @@ async function main() {
     // 3. Ollama og modellen — påkrevd kun på kjøre-PC-en (markørfila .kjore-pc, synkes ikke).
     const runPc = fs.existsSync(path.join(__dirname, '.kjore-pc'));
     const h = await (await fetch(base + '/api/health')).json();
-    if (runPc) {
+    if (runPc && !noOllama) {
       ok('Ollama svarer', h.ollama);
       ok('modellen ' + h.model + ' er lastet ned', h.modelFound);
+    } else if (runPc && noOllama) {
+      console.log('  – Ollama-sjekker hoppet over (--no-ollama)');
     } else {
       console.log('  – Ollama-sjekker hoppet over (ikke kjøre-PC, ingen .kjore-pc)');
     }
 
     // 4. (--full, kun kjøre-PC) Ekte svar fra modellen, med et vedlegg.
-    if (full && runPc && h.modelFound) {
+    if (full && runPc && !noOllama && h.modelFound) {
       const secret = 'BOLLE' + Math.floor(Math.random() * 9000 + 1000);
       const content = 'Vedlagt fil: test.txt\n```\nKodeordet er ' + secret + '.\n```\n\nHva er kodeordet i fila? Svar kun med kodeordet.';
       const r = await fetch(base + '/api/chat', {

@@ -1,7 +1,7 @@
 ﻿# sync.ps1 — synk qwen-chat med GitHub. Samme skript på begge maskinene.
 #   .\sync.ps1                 hent siste endringer
 #   .\sync.ps1 "melding"       hent, commit egne endringer (bolletest via hook) og push
-param([string]$Melding)
+param([string]$Melding, [switch]$UtenOllama)
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
@@ -14,6 +14,8 @@ if ($endringer -and -not $Melding) {
   git status --short
   exit 1
 }
+
+if ($UtenOllama) { $env:BOLLE_NO_OLLAMA = '1' }  # hopp over Ollama-sjekkene i bolletesten
 
 if ($endringer) {
   git add -A

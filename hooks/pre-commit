@@ -1,6 +1,8 @@
 #!/bin/sh
 # apv2.2 — blokkér commit hvis bolletest eller versjonssjekk feiler
-node bolletest.js || {
+FLAGG=""
+[ -n "$BOLLE_NO_OLLAMA" ] && FLAGG="--no-ollama"
+node bolletest.js $FLAGG || {
   echo "apv2.2: bolletest feilet — commit blokkert."
   exit 1
 }

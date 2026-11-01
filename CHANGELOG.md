@@ -3,6 +3,13 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [1.13.2] — 2026-11-02
+
+### Changed
+- bolletest: nytt flagg `--no-ollama` som hopper over de to Ollama-sjekkene (for rene tekst-/versjon-commits der Ollama ikke trenger å kjøre).
+- hooks/pre-commit: sender `--no-ollama` videre når miljøvariabelen `BOLLE_NO_OLLAMA` er satt.
+- sync.ps1: ny bryter `-UtenOllama` som setter variabelen, slik at `.\sync.ps1 "melding" -UtenOllama` committer uten at Ollama må være oppe. Standard oppførsel (uten bryteren) er uendret: Ollama kreves.
+
 ## [1.13.1] — 2026-11-01
 
 ### Changed
