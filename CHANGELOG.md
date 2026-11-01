@@ -3,6 +3,15 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [1.13.0] — 2026-11-01
+
+### Added
+- Knappen «▶ Start Ollama» i headeren. Vises bare når Ollama er nede; starter `ollama serve` skjult via serveren og laster modellene inn automatisk når den svarer.
+- Nytt endepunkt `POST /api/ollama/start` (venter opptil 15 sekunder på at Ollama svarer).
+
+### Security
+- `/api/ollama/start` krever `Origin` fra egen side (localhost/127.0.0.1 på serverens port), så andre nettsider ikke kan starte prosesser via skjult fetch (CSRF).
+
 ## [1.12.1] — 2026-10-21
 
 ### Fixed

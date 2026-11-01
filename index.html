@@ -119,7 +119,7 @@
 
 <header>
   <h1>Abliterated</h1>
-  <span class="ver" data-stamp="header">v1.12.1</span>
+  <span class="ver" data-stamp="header">v1.13.0</span>
   <select id="modelSelect" title="Velg modell"><option>laster…</option></select>
   <label id="agentLbl" title="Agent-modus: modellen bruker verktøy (filanalyse, lyd, vision) i en løkke"><input type="checkbox" id="agentToggle"> 🔧 Agent</label>
   <select id="ctxSelect" title="Kontekstvindu (modellens hukommelse). Større = husker mer, men tregere.">
@@ -129,6 +129,7 @@
     <option value="131072">128K</option>
   </select>
   <span id="status">sjekker…</span>
+  <button id="ollamaBtn" style="display:none" title="Start Ollama (motoren som kjører modellen)">▶ Start Ollama</button>
   <span class="spacer"></span>
   <button id="aboutBtn">Om</button>
   <button id="newBtn">Ny samtale</button>
@@ -152,13 +153,13 @@
   </div>
 </div>
 
-<footer data-stamp="footer">Abliterated v1.12.1 · kjører lokalt via Ollama</footer>
+<footer data-stamp="footer">Abliterated v1.13.0 · kjører lokalt via Ollama</footer>
 
 <div id="docs">
   <div class="card">
     <strong>Om Abliterated</strong>
     <table>
-      <tr><td>Versjon</td><td data-stamp="docs">1.12.1</td></tr>
+      <tr><td>Versjon</td><td data-stamp="docs">1.13.0</td></tr>
       <tr><td>Modell</td><td id="docModel">–</td></tr>
       <tr><td>Backend</td><td>Ollama (localhost:11434)</td></tr>
       <tr><td>Kontekst</td><td>Velgbar 16K–128K (modellens hukommelse). Større = husker mer, tregere. «Ny samtale» tømmer alt.</td></tr>
@@ -602,8 +603,12 @@ $('agentToggle').onchange = () => {
   }
 };
 
-fetch('/api/health').then((r) => r.json()).then((h) => {
+// Vis «Start Ollama»-knappen bare når Ollama er nede.
+const ollamaBtn = (show) => { $('ollamaBtn').style.display = show ? '' : 'none'; };
+function loadHealth() {
+return fetch('/api/health').then((r) => r.json()).then((h) => {
   const s = $('status');
+  ollamaBtn(!h.ollama);
   $('docModel').textContent = h.model;
   if (!h.ollama) { sel.innerHTML = '<option>–</option>'; s.className = 'bad'; s.textContent = 'Ollama kjører ikke'; return; }
   visionSet = new Set(h.vision || []);
@@ -615,7 +620,20 @@ fetch('/api/health').then((r) => r.json()).then((h) => {
   // 👁 i option-teksten ville forurenset value; sett ren value i stedet.
   [...sel.options].forEach((o) => { o.value = o.text.replace(/ 👁$/, ''); });
   updateStatus();
-}).catch(() => { sel.innerHTML = '<option>–</option>'; $('status').className = 'bad'; $('status').textContent = 'server utilgjengelig'; });
+}).catch(() => { ollamaBtn(false); sel.innerHTML = '<option>–</option>'; $('status').className = 'bad'; $('status').textContent = 'server utilgjengelig'; });
+}
+loadHealth();
+$('ollamaBtn').onclick = async () => {
+  const b = $('ollamaBtn');
+  b.disabled = true; b.textContent = 'starter…';
+  try {
+    const r = await fetch('/api/ollama/start', { method: 'POST' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    await loadHealth(); // laster modellene inn uten F5
+  } catch (e) { $('status').className = 'bad'; $('status').textContent = String(e.message || e); }
+  b.disabled = false; b.textContent = '▶ Start Ollama';
+};
 
 render();
 $('input').focus();

@@ -3,7 +3,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 
 const PORT = Number(process.env.PORT) || 3000;
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
@@ -345,6 +345,29 @@ async function upload(req, res) {
   return send(res, 200, { ok: true, filename: name });
 }
 
+// Start Ollama fra nettsiden (knappen «Start Ollama»). Samme sti som start.ps1.
+async function ollamaUp() { try { await listModels(); return true; } catch { return false; } }
+async function startOllama(req, res) {
+  // CSRF-vern: kun vår egen side på localhost får starte Ollama, ikke andre nettsider via skjult fetch.
+  const origin = req.headers.origin || '';
+  if (origin !== `http://localhost:${PORT}` && origin !== `http://127.0.0.1:${PORT}`) return send(res, 403, { error: 'Ugyldig opprinnelse' });
+  if (await ollamaUp()) return send(res, 200, { ok: true, already: true });
+  const local = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Ollama', 'ollama.exe');
+  const exe = process.env.LOCALAPPDATA && fs.existsSync(local) ? local : 'ollama';
+  let spawnErr = null;
+  try {
+    const p = spawn(exe, ['serve'], { detached: true, stdio: 'ignore', windowsHide: true });
+    p.on('error', (e) => { spawnErr = e; });
+    p.unref();
+  } catch (e) { spawnErr = e; }
+  for (let i = 0; i < 30; i++) {
+    if (spawnErr) return send(res, 500, { error: 'Kunne ikke starte Ollama: ' + spawnErr.message });
+    await new Promise((r) => setTimeout(r, 500));
+    if (await ollamaUp()) return send(res, 200, { ok: true });
+  }
+  return send(res, 504, { error: 'Ollama svarte ikke innen 15 sekunder' });
+}
+
 const server = http.createServer(async (req, res) => {
   const url = req.url.split('?')[0];
   if (req.method === 'GET' && (url === '/' || url === '/index.html')) {
@@ -365,6 +388,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url === '/api/localroot') return localroot(req, res);
   if (req.method === 'POST' && url === '/api/agent') return agent(req, res);
   if (req.method === 'POST' && url === '/api/agent/resume') return agentResume(req, res);
+  if (req.method === 'POST' && url === '/api/ollama/start') return startOllama(req, res);
   send(res, 404, { error: 'Ikke funnet' });
 });
 
