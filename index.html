@@ -119,7 +119,7 @@
 
 <header>
   <h1>Abliterated</h1>
-  <span class="ver" data-stamp="header">v1.13.3</span>
+  <span class="ver" data-stamp="header">v1.13.4</span>
   <select id="modelSelect" title="Velg modell"><option>laster…</option></select>
   <label id="agentLbl" title="Agent-modus: modellen bruker verktøy (filanalyse, lyd, vision) i en løkke"><input type="checkbox" id="agentToggle"> 🔧 Agent</label>
   <select id="ctxSelect" title="Kontekstvindu (modellens hukommelse). Større = husker mer, men tregere.">
@@ -143,7 +143,9 @@
     <textarea id="input" rows="1" placeholder="Skriv en melding… (Enter sender, Shift+Enter ny linje)"></textarea>
     <div class="row">
       <button id="attachBtn" title="Legg ved fil (tekst, kode, PDF, bilde)">📎 Fil</button>
+      <button id="folderBtn" title="Legg ved en hel mappe med småfiler (maks 100 MB til sammen). Store dumper: bruk sti-feltet i stedet.">📁 Mappe</button>
       <input type="file" id="file" multiple hidden>
+      <input type="file" id="folder" webkitdirectory multiple hidden>
       <input id="localPath" placeholder="📁 Lokal mappe for store filer (lim inn sti)…" title="Godkjenn en mappe agenten får lese store filer fra (RAM-dumper, disk-images)">
       <button id="addRoot" title="Godkjenn mappa">Godkjenn</button>
       <span class="spacer"></span>
@@ -153,18 +155,19 @@
   </div>
 </div>
 
-<footer data-stamp="footer">Abliterated v1.13.3 · kjører lokalt via Ollama</footer>
+<footer data-stamp="footer">Abliterated v1.13.4 · kjører lokalt via Ollama</footer>
 
 <div id="docs">
   <div class="card">
     <strong>Om Abliterated</strong>
     <table>
-      <tr><td>Versjon</td><td data-stamp="docs">1.13.3</td></tr>
+      <tr><td>Versjon</td><td data-stamp="docs">1.13.4</td></tr>
       <tr><td>Modell</td><td id="docModel">–</td></tr>
       <tr><td>Backend</td><td>Ollama (localhost:11434)</td></tr>
       <tr><td>Kontekst</td><td>Velgbar 16K–128K (modellens hukommelse). Større = husker mer, tregere. «Ny samtale» tømmer alt.</td></tr>
       <tr><td>Lokal mappe 📁</td><td>Godkjenn en mappe så agenten kan lese store filer (RAM-dumper, disk-images) direkte — uten opplasting/størrelsesgrense.</td></tr>
       <tr><td>Vedlegg</td><td>Alt: bilde (→ vision), tekst/kode, PDF, ellers hex-oppsummering</td></tr>
+      <tr><td>Mappe 📁</td><td>«📁 Mappe» legger ved en hel mappe med småfiler (maks 100 MB til sammen). Større: bruk sti-feltet for store filer.</td></tr>
       <tr><td>Agent 🔧</td><td>Verktøy: analyser_fil, dekod_lyd, spør_vision, steganalyse, yara_scan, pe_info, volatility, disk_analyser, kjør_python (godkjenning). Standard: Devstral</td></tr>
     </table>
     <button id="closeDocs">Lukk</button>
@@ -550,6 +553,18 @@ $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shif
 $('send').onclick = send;
 $('attachBtn').onclick = () => $('file').click();
 $('file').onchange = (e) => { addFiles(e.target.files); e.target.value = ''; };
+$('folderBtn').onclick = () => $('folder').click();
+$('folder').onchange = (e) => {
+  const list = [...e.target.files];
+  const total = list.reduce((n, f) => n + f.size, 0);
+  const MAKS = 100 * 1024 * 1024;
+  if (total > MAKS) {
+    alert('Mappa er ' + (total / 1048576).toFixed(0) + ' MB, over grensen på 100 MB.\n\nFor store dumper (RAM/disk-image): bruk sti-feltet «📁 Lokal mappe for store filer» i stedet — da leses filene fra disk uten opplasting.');
+  } else {
+    addFiles(list);
+  }
+  e.target.value = '';
+};
 $('newBtn').onclick = () => { if (controller) controller.abort(); messages = []; save(); render(); };
 $('aboutBtn').onclick = () => $('docs').classList.add('open');
 $('closeDocs').onclick = () => $('docs').classList.remove('open');

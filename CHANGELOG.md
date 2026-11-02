@@ -3,6 +3,12 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [1.13.4] — 2026-11-02
+
+### Added
+- «📁 Mappe»-knapp som legger ved en hel mappe med småfiler (via webkitdirectory). Gjenbruker samme vedleggsflyt som fil-knappen.
+- Grense på 100 MB totalt for mappe-opplasting: over det stopper den og peker til sti-feltet «📁 Lokal mappe for store filer», som leser store dumper (RAM/disk-image) fra disk uten opplasting. De to dekker hver sin bruk: mange småfiler vs. én stor dump.
+
 ## [1.13.3] — 2026-11-02
 
 ### Fixed
