@@ -119,7 +119,7 @@
 
 <header>
   <h1>Abliterated</h1>
-  <span class="ver" data-stamp="header">v1.13.2</span>
+  <span class="ver" data-stamp="header">v1.13.3</span>
   <select id="modelSelect" title="Velg modell"><option>laster…</option></select>
   <label id="agentLbl" title="Agent-modus: modellen bruker verktøy (filanalyse, lyd, vision) i en løkke"><input type="checkbox" id="agentToggle"> 🔧 Agent</label>
   <select id="ctxSelect" title="Kontekstvindu (modellens hukommelse). Større = husker mer, men tregere.">
@@ -153,13 +153,13 @@
   </div>
 </div>
 
-<footer data-stamp="footer">Abliterated v1.13.2 · kjører lokalt via Ollama</footer>
+<footer data-stamp="footer">Abliterated v1.13.3 · kjører lokalt via Ollama</footer>
 
 <div id="docs">
   <div class="card">
     <strong>Om Abliterated</strong>
     <table>
-      <tr><td>Versjon</td><td data-stamp="docs">1.13.2</td></tr>
+      <tr><td>Versjon</td><td data-stamp="docs">1.13.3</td></tr>
       <tr><td>Modell</td><td id="docModel">–</td></tr>
       <tr><td>Backend</td><td>Ollama (localhost:11434)</td></tr>
       <tr><td>Kontekst</td><td>Velgbar 16K–128K (modellens hukommelse). Større = husker mer, tregere. «Ny samtale» tømmer alt.</td></tr>
@@ -229,7 +229,7 @@ function render() {
       el.innerHTML = html || '<div class="loading"><span></span><span></span><span></span></div>';
     } else {
       let html = '';
-      if (m.thinking) html += '<details class="think"><summary>Tenkte</summary><div>' + esc(m.thinking) + '</div></details>';
+      if (m.thinking) html += '<details class="think"' + (m.streaming ? ' open' : '') + '><summary>Tenkte</summary><div>' + esc(m.thinking) + '</div></details>';
       html += m.error ? '<p class="error">' + esc(m.error) + '</p>'
         : (m.content ? md(m.content) : '<div class="loading"><span></span><span></span><span></span></div>');
       el.innerHTML = html;
@@ -418,7 +418,7 @@ async function send() {
   const images = imageAtts.map((f) => f.image);
   const thumbs = imageAtts.map((f) => f.thumb);
   messages.push({ role: 'user', content, text, files: pending.map((f) => f.name), images, thumbs });
-  const reply = { role: 'assistant', content: '', thinking: '' };
+  const reply = { role: 'assistant', content: '', thinking: '', streaming: true };
   messages.push(reply);
   pending = []; renderPending();
   $('input').value = ''; grow();
@@ -456,6 +456,7 @@ async function send() {
   } catch (e) {
     if (e.name !== 'AbortError') reply.error = 'Feil: ' + e.message;
   } finally {
+    reply.streaming = false;
     controller = null;
     $('send').textContent = 'Send';
     save(); render();

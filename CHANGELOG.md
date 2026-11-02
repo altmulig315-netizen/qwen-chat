@@ -3,6 +3,11 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [1.13.3] — 2026-11-02
+
+### Fixed
+- «Tenkte»-boksen spratt igjen mens modellen tenkte, fordi hele chatten bygges om for hver strøm-bit. Boksen holdes nå åpen så lenge svaret strømmer (du ser tankene live) og faller sammen når svaret er ferdig. Da kommer ingen flere re-renders, så den kan åpnes og leses i ro.
+
 ## [1.13.2] — 2026-11-02
 
 ### Changed
