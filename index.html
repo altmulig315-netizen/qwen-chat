@@ -75,6 +75,7 @@
   @keyframes bounce { 0%, 80%, 100% { opacity: .35; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-5px); } }
   details.think { color: var(--muted); font-size: 14px; margin-bottom: 8px; }
   details.think div { white-space: pre-wrap; border-left: 2px solid var(--border); padding-left: 10px; }
+  .streamraw { white-space: pre-wrap; word-break: break-word; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
   .chip {
     font-size: 13px; background: var(--panel); border: 1px solid var(--border);
@@ -119,7 +120,7 @@
 
 <header>
   <h1>Abliterated</h1>
-  <span class="ver" data-stamp="header">v1.13.4</span>
+  <span class="ver" data-stamp="header">v1.13.5</span>
   <select id="modelSelect" title="Velg modell"><option>laster…</option></select>
   <label id="agentLbl" title="Agent-modus: modellen bruker verktøy (filanalyse, lyd, vision) i en løkke"><input type="checkbox" id="agentToggle"> 🔧 Agent</label>
   <select id="ctxSelect" title="Kontekstvindu (modellens hukommelse). Større = husker mer, men tregere.">
@@ -155,13 +156,13 @@
   </div>
 </div>
 
-<footer data-stamp="footer">Abliterated v1.13.4 · kjører lokalt via Ollama</footer>
+<footer data-stamp="footer">Abliterated v1.13.5 · kjører lokalt via Ollama</footer>
 
 <div id="docs">
   <div class="card">
     <strong>Om Abliterated</strong>
     <table>
-      <tr><td>Versjon</td><td data-stamp="docs">1.13.4</td></tr>
+      <tr><td>Versjon</td><td data-stamp="docs">1.13.5</td></tr>
       <tr><td>Modell</td><td id="docModel">–</td></tr>
       <tr><td>Backend</td><td>Ollama (localhost:11434)</td></tr>
       <tr><td>Kontekst</td><td>Velgbar 16K–128K (modellens hukommelse). Større = husker mer, tregere. «Ny samtale» tømmer alt.</td></tr>
@@ -240,6 +241,34 @@ function render() {
     chat.appendChild(el);
   }
   $('scroller').scrollTop = $('scroller').scrollHeight;
+}
+
+// Er brukeren allerede nederst? (da følger vi med automatisk, ellers lar vi scrollen være)
+function atBottom() { const s = $('scroller'); return s.scrollHeight - s.scrollTop - s.clientHeight < 60; }
+
+// Oppdater KUN siste melding mens den strømmer, uten å bygge om hele chatten.
+// Da overlever tekstmarkering og dobbeltklikk. Full render() (med markdown) kjøres når svaret er ferdig.
+function updateStreaming(m) {
+  const chat = $('chat');
+  const el = chat.lastElementChild;
+  if (!el || !el.classList.contains('assistant') || el.classList.contains('agent')) { render(); return; }
+  if (!el._stream) {
+    el.innerHTML = '';
+    const think = document.createElement('details');
+    think.className = 'think'; think.open = true;
+    think.innerHTML = '<summary>Tenkte</summary>';
+    const tdiv = document.createElement('div');
+    think.appendChild(tdiv);
+    const content = document.createElement('div');
+    content.className = 'streamraw';
+    el.appendChild(think); el.appendChild(content);
+    el._stream = { think, tdiv, content };
+  }
+  const st = el._stream, stick = atBottom();
+  st.think.style.display = m.thinking ? '' : 'none';
+  if (st.tdiv.textContent !== m.thinking) st.tdiv.textContent = m.thinking; // skrives bare ved endring, så ferdig tanke-tekst kan markeres i fred
+  if (st.content.textContent !== m.content) st.content.textContent = m.content;
+  if (stick) $('scroller').scrollTop = $('scroller').scrollHeight;
 }
 
 function renderPending() {
@@ -454,7 +483,7 @@ async function send() {
           reply.content += j.message.content || '';
         }
       }
-      render();
+      updateStreaming(reply);
     }
   } catch (e) {
     if (e.name !== 'AbortError') reply.error = 'Feil: ' + e.message;

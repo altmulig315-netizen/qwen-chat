@@ -3,6 +3,12 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [1.13.5] — 2026-11-03
+
+### Fixed
+- Under strømming ble hele chatten bygget om for hver tekst-bit, så tekstmarkering forsvant straks og dobbeltklikk fikk siden til å henge. Nå oppdateres kun den siste meldingen på plass mens den strømmer (rå tekst), slik at markering og dobbeltklikk fungerer. Markdown formateres når svaret er ferdig (uendret sluttresultat).
+- Auto-scroll følger bare med når du allerede er nederst; har du bladd opp eller markerer tekst, står scrollen i ro.
+
 ## [1.13.4] — 2026-11-02
 
 ### Added
