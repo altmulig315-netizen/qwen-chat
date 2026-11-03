@@ -3,6 +3,12 @@
 Kategorier følger [Keep a Changelog](https://keepachangelog.com):
 **Added · Changed · Deprecated · Removed · Fixed · Security**.
 
+## [1.13.6] — 2026-11-03
+
+### Changed
+- Lagt til MIT-lisens (LICENSE) med kreditering av PDF.js (Mozilla, Apache 2.0), som brukes i vendor/.
+- readme.txt: fjernet lokal brukersti (personlig brukernavn) og erstattet med nøytral plassholder; lagt til kort opphavsnote for PDF.js. Klargjør repoet for å gjøres offentlig.
+
 ## [1.13.5] — 2026-11-03
 
 ### Fixed
